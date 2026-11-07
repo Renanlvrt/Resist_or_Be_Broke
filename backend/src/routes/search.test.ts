@@ -295,7 +295,8 @@ test('memo: "nothing cheaper" is remembered, errors are retried', async () => {
       await post(base, { product: demo });
       await post(base, { product: demo });
     });
-    assert.equal(calls, 2, 'a Firecrawl 429 must not be cached');
+    // each post: search 429 -> one retry (also 429) -> error; the error is not memoised, so the second post searches again
+    assert.equal(calls, 4, 'a Firecrawl 429 must not be cached');
   } finally {
     globalThis.fetch = realFetch;
     delete process.env.FIRECRAWL_API_KEY;

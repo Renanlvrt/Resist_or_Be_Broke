@@ -4,7 +4,10 @@ const BASE = process.env.BACKEND ?? 'http://localhost:8787';
 const rd = (f) => JSON.parse(readFileSync(new URL('../packages/shared/' + f, import.meta.url), 'utf8'));
 const profile = rd('demo-profile.json'), product = rd('demo-product.json');
 
-const VARIANT = process.argv[2] === 'sport' ? 'sport' : 'fashion';
+const VARIANT = process.argv[2] === 'sport' ? 'sport' : process.argv[2] === 'scarcity' ? 'scarcity' : 'fashion';
+const REJECT = 'This is not a valid reason. Come on.';
+const ACCEPT = 'Okay, training. Fair.';
+const MAX_WORDS = 8;
 const r = await fetch(`${BASE}/api/voice/session`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profile, product }) });
 if (!r.ok) { console.error('session failed', r.status, await r.text()); process.exit(2); }
 const { signedUrl, dynamicVariables } = await r.json();
@@ -52,17 +55,36 @@ async function round(n, text, expect) {
     const p = tool.params ?? {};
     if (p.verdict !== expect.verdict) fails.push(`verdict ${p.verdict} != ${expect.verdict}`);
     if (p.reasonCategory !== expect.cat) fails.push(`category ${p.reasonCategory} != ${expect.cat}`);
-    if (p.spokenLine && p.spokenLine.split(/\s+/).length > 16) fails.push('spokenLine >15 words');
+    if (p.spokenLine && p.spokenLine.split(/\s+/).length > MAX_WORDS) fails.push(`spokenLine >${MAX_WORDS} words`);
+    if (p.spokenLine && p.spokenLine.trim() !== expect.want) fails.push(`tool spokenLine "${p.spokenLine}" != "${expect.want}"`);
   }
   if (!says.length) fails.push('no agent_response');
-  const want = expect.verdict === 'reject' ? 'Really?! This is not like you. Fashion is off this month. Here is a cheaper pair.' : 'Okay, training. Fair. Still, here is a cheaper pair.';
-  if (says.length && !says.some((x) => x.trim() === want)) fails.push('spoken line mismatch');
-  for (const s of says) if (s.split(/\s+/).length > 16) fails.push(`reply >15 words: "${s}"`);
+  if (says.length && !says.some((x) => x.trim() === expect.want)) fails.push('spoken line mismatch');
+  for (const s of says) if (s.split(/\s+/).length > MAX_WORDS) fails.push(`reply >${MAX_WORDS} words: "${s}"`);
   console.log(`ROUND ${n}: ${fails.length ? 'FAIL ' + fails.join('; ') : 'PASS'} | latency to first agent response: ${firstResp ?? 'n/a'}ms`);
   return !fails.length;
 }
 const a = VARIANT === 'sport'
-  ? await round(1, 'training for track', { verdict: 'accept', cat: 'sport' })
-  : await round(1, 'I need them for fashion, you know', { verdict: 'reject', cat: 'fashion' });
+  ? await round(1, 'training for track', { verdict: 'accept', cat: 'sport', want: ACCEPT })
+  : VARIANT === 'scarcity'
+    ? await round(1, 'There is only one in stock so I need them now', { verdict: 'reject', cat: 'other', want: REJECT })
+    : await round(1, 'I need them for fashion, you know', { verdict: 'reject', cat: 'fashion', want: REJECT });
+// Follow-up turn after the verdict: short dry reply, no second decide call.
+async function followUp(text) {
+  events = []; t0 = Date.now();
+  log('FOLLOW-UP USER:', text);
+  ws.send(JSON.stringify({ type: 'user_message', text }));
+  await waitFor(() => events.some((e) => e.kind === 'say'), 15000);
+  await sleep(4000);
+  const says = events.filter((e) => e.kind === 'say').map((e) => e.text);
+  const decides = events.filter((e) => e.kind === 'tool' && e.name === 'decide');
+  const fails = [];
+  if (!says.length) fails.push('no agent_response');
+  for (const s of says) if (s.split(/\s+/).length > MAX_WORDS) fails.push(`reply >${MAX_WORDS} words: "${s}"`);
+  if (decides.length) fails.push('decide called again');
+  console.log(`FOLLOW-UP: ${fails.length ? 'FAIL ' + fails.join('; ') : 'PASS'}`);
+  return !fails.length;
+}
+const f = await followUp('okay I am going to buy them then');
 ws.close();
-process.exit(a && firstOk ? 0 : 1);
+process.exit(a && f && firstOk ? 0 : 1);

@@ -7,7 +7,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "esbuild src/index.ts --bundle --format=esm --outfile=dist/index.js",
-    "build:bridge": "esbuild bridge/src/bridge.ts --bundle --format=iife --target=chrome110 --outfile=bridge/dist/bridge.js && esbuild bridge/src/background.ts --bundle --format=iife --target=chrome110 --outfile=bridge/dist/background.js"
+    "build:bridge": "esbuild bridge/src/standalone.ts --bundle --format=iife --target=chrome110 --outfile=bridge/dist/bridge.js && esbuild bridge/src/background.ts --bundle --format=iife --target=chrome110 --outfile=bridge/dist/background.js"
   },
   "dependencies": {
     "@elevenlabs/client": "1.35.0"

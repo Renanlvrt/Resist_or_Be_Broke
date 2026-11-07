@@ -22,7 +22,7 @@ export function parseGbp(text: string | null | undefined): number | undefined {
   if (!text) return undefined;
   const m = text.replace(/ /g, ' ').match(/£\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)/);
   if (!m) return undefined;
-  const n = parseFloat(m[1].replace(/,/g, ''));
+  const n = parseFloat(m[1]!.replace(/,/g, ''));
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
@@ -63,7 +63,7 @@ export function readTableAsin(doc: Document): string | undefined {
   }
   for (const li of Array.from(doc.querySelectorAll('#detailBullets_feature_div li, #detailBulletsWrapper_feature_div li'))) {
     const m = clean(li.textContent).match(/^ASIN\s*:?\s*([A-Z0-9]{10})/i);
-    if (m) return m[1].toUpperCase();
+    if (m) return m[1]!.toUpperCase();
   }
   return undefined;
 }
@@ -75,7 +75,7 @@ export function readColour(doc: Document): string | undefined {
   }
   const lab = clean(doc.querySelector('#variation_color_name label, #variation_color_name .a-form-label')?.textContent);
   const m = lab.match(/Colou?r\s*:\s*(.+)/i);
-  if (m) return m[1].trim();
+  if (m) return m[1]!.trim();
   for (const tr of Array.from(doc.querySelectorAll('tr'))) {
     const th = tr.querySelector('th'), td = tr.querySelector('td');
     if (th && td && /^Colou?r$/i.test(clean(th.textContent))) { const t = clean(td.textContent); if (t) return t; }
@@ -85,7 +85,7 @@ export function readColour(doc: Document): string | undefined {
 
 function brandOf(title: string, byline: string): string {
   const m = byline.match(/Visit the (.+?) Store/i) || byline.match(/Brand:\s*(.+)/i);
-  if (m) return m[1].trim();
+  if (m) return m[1]!.trim();
   return title.split(/\s+/)[0] || 'Unknown';
 }
 
@@ -94,7 +94,7 @@ export function detectProduct(doc: Document, href: string, opts: { demo?: boolea
   let title = (doc.querySelector('#productTitle')?.textContent || '').replace(/\s+/g, ' ').trim();
   if (!title && opts.fast) { // earlier signal: <title> "Amazon.co.uk: <product>: Fashion"
     const parts = (doc.title || '').split(':').map((x) => x.trim()).filter(Boolean);
-    if (parts.length >= 2 && /^amazon\./i.test(parts[0])) title = parts[1];
+    if (parts.length >= 2 && /^amazon\./i.test(parts[0]!)) title = parts[1]!;
   }
   if (!title) return { reason: 'no title yet' };
   const byline = (doc.querySelector('#bylineInfo')?.textContent || '').replace(/\s+/g, ' ').trim();

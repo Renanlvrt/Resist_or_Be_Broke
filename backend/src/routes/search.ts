@@ -21,10 +21,11 @@ export const BUDGET_MS = 6000;
 export const PREFETCH_BUDGET_MS = 15000;
 const MEMO_TTL_MS = 30 * 60_000;
 const SEARCH_MS = 2000;
-const MAX_SCRAPE_MS = 10000;
-const CLAUDE_RESERVE_MS = 2000;
+const MAX_SCRAPE_MS = 4500;
+const CLAUDE_RESERVE_MS = 2500;
+const CLAUDE_MIN_MS = 2000;
 const MAX_CANDIDATES = 3;
-const PAGE_CHARS = 2500;
+const PAGE_CHARS = 3000;
 
 /** Named UK retailers only. Amazon is where the user already is, so it's never an "alternative". */
 export const RETAILERS = [
@@ -72,14 +73,14 @@ export function retailerFor(url: string): string | null {
     return null;
   }
   const host = u.hostname.replace(/^www\./, '');
-  const r = RETAILERS.find((r) => host === r.host || host.endsWith(`.${r.host}`));
+  const r = RETAILERS.find((r) => host === r.host); // regional subdomains (us.sportsdirect.com) are not UK shops
   if (!r) return null;
   if ('path' in r && !u.pathname.startsWith(r.path)) return null;
   return r.name;
 }
 
 /** Variant words that make a different product (seen in real results: "Pegasus 41 GORE-TEX", "By You" custom). */
-const VARIANTS = /\b(gore[\s-]?tex|gtx|trail|by you|premium|shield|flyease|wide|kids?|junior|gs)\b/gi;
+const VARIANTS = /\b(gore[\s-]?tex|gtx|trail|by you|premium|shield|flyease|wide|kids?|junior|gs|women'?s?|ladies|girls?)\b/gi;
 
 /**
  * Same model = every word of the model name appears as a whole word (so "Pegasus 41" rejects
@@ -114,7 +115,7 @@ export function pickCheapest(offers: Offer[], product: Pick<Product, 'title' | '
       isSameModel(o.title, model, code, product.title) &&
       Number.isFinite(o.price) &&
       o.price < product.price &&
-      o.price >= product.price * 0.25,
+      o.price >= product.price * 0.1,
   );
   valid.sort((a, b) => a.price - b.price);
   return valid[0] ?? null;
@@ -193,12 +194,20 @@ interface Page {
 const firecrawl = async (endpoint: 'search' | 'scrape', body: object, timeoutMs: number): Promise<any> => {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) throw new Error('no FIRECRAWL_API_KEY');
-  const r = await fetch(`https://api.firecrawl.dev/v2/${endpoint}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ ...body, timeout: Math.max(1000, timeoutMs - 300) }),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+  const t0 = Date.now();
+  const call = (ms: number) =>
+    fetch(`https://api.firecrawl.dev/v2/${endpoint}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ ...body, timeout: Math.max(1000, ms - 300) }),
+      signal: AbortSignal.timeout(ms),
+    });
+  let r = await call(timeoutMs);
+  // Firecrawl rate-limits bursts (429): one retry after a short pause, only if the budget allows it.
+  if (r.status === 429 && Date.now() - t0 < timeoutMs / 2) {
+    await new Promise((res) => setTimeout(res, 400));
+    r = await call(Math.max(1000, timeoutMs - (Date.now() - t0)));
+  }
   if (!r.ok) throw new Error(`firecrawl ${endpoint} ${r.status}`);
   return r.json();
 };
@@ -211,7 +220,7 @@ const firecrawl = async (endpoint: 'search' | 'scrape', body: object, timeoutMs:
 export async function findCandidates(product: Product): Promise<{ url: string; title: string }[]> {
   const j = await firecrawl(
     'search',
-    { query: buildQuery(product), limit: 5, sources: ['web'], includeDomains: RETAILERS.map((r) => r.host), country: 'GB' },
+    { query: `${buildQuery(product)}${genderWord(product.title)}`, limit: 5, sources: ['web'], includeDomains: RETAILERS.map((r) => r.host), country: 'GB' },
     SEARCH_MS,
   );
   const model = modelName(product);
@@ -219,23 +228,36 @@ export async function findCandidates(product: Product): Promise<{ url: string; t
   const web: any[] = j?.data?.web ?? [];
   return web
     .map((w) => ({ url: String(w?.url ?? ''), title: String(w?.title ?? '') }))
-    .filter((w) => retailerFor(w.url) && isSameModel(w.title, model, code, product.title))
+    .filter((w) => retailerFor(w.url) && !isListingPage(w.url) && isSameModel(w.title, model, code, product.title))
     .slice(0, MAX_CANDIDATES);
 }
 
 /** Step 2: scrape the candidates in parallel. maxAge lets Firecrawl serve pages it saw in the last 2 days (~0.2 s). */
+/** "Adidas Ultraboost 5 Mens Running Shoes" -> " Mens": the gender word steers Firecrawl away from womens listings. */
+export function genderWord(title: string): string {
+  if (/\bwomen'?s\b|\bwomens\b/i.test(title)) return ' Womens';
+  if (/\bmen'?s\b|\bmens\b/i.test(title)) return ' Mens';
+  return '';
+}
+
+/** Returns whatever has arrived by the deadline: one slow retailer (JD Sports cold: 8 s+) must not block the others. */
 async function scrapePages(cands: { url: string; title: string }[], timeoutMs: number): Promise<{ pages: Page[]; errors: string[] }> {
-  const settled = await Promise.allSettled(
-    cands.map((c) =>
-      firecrawl('scrape', { url: c.url, formats: ['markdown'], onlyMainContent: true, maxAge: 172_800_000 }, timeoutMs).then(
-        (j): Page => ({ url: c.url, title: c.title, markdown: String(j?.data?.markdown ?? '') }),
-      ),
+  const pages: Page[] = [];
+  const errors: string[] = [];
+  const all = cands.map((c) =>
+    firecrawl('scrape', { url: c.url, formats: ['markdown'], onlyMainContent: true, maxAge: 172_800_000 }, timeoutMs).then(
+      (j) => {
+        const markdown = String(j?.data?.markdown ?? '');
+        if (markdown) pages.push({ url: c.url, title: c.title, markdown });
+        else errors.push(`empty ${c.url}`);
+      },
+      (e) => void errors.push(String(e?.message ?? e)),
     ),
   );
-  return {
-    pages: settled.flatMap((s) => (s.status === 'fulfilled' && s.value.markdown ? [s.value] : [])),
-    errors: settled.flatMap((s) => (s.status === 'rejected' ? [String(s.reason?.message ?? s.reason)] : [])),
-  };
+  let timer: NodeJS.Timeout | undefined;
+  await Promise.race([Promise.all(all), new Promise<void>((r) => (timer = setTimeout(r, timeoutMs)))]);
+  clearTimeout(timer);
+  return { pages: [...pages], errors: [...errors] };
 }
 
 /** Category/search/listing pages (many products on one page): only Claude may read prices from these. */
@@ -243,11 +265,22 @@ export function isListingPage(url: string): boolean {
   try {
     const { hostname, pathname } = new URL(url);
     if (/\/(w|collection|collections|search|c|browse)\//i.test(pathname)) return true;
+    // eBay product pages are /itm/...; /b/... and /sch/... are category or search pages (200k chars of listings).
+    if (hostname.endsWith('ebay.co.uk') && !/\/itm\//.test(pathname)) return true;
     // Sports Direct product pages are one segment ending in an id: /nike-pegasus-41-road-running-shoes-mens-210014
     return hostname.endsWith('sportsdirect.com') && !/^\/[^/]+-\d+\/?$/.test(pathname);
   } catch {
     return true;
   }
+}
+
+/** Drop image and link URLs: they filled the first 2.5k chars and pushed the price out of view. */
+export function cleanMarkdown(md: string): string {
+  return md
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -281,7 +314,7 @@ async function claudeExtract(product: Product, model: string, pages: Page[], tim
   const user = [
     `Model: ${model}${productCode(product.title) ? ` (code ${productCode(product.title)})` : ''}`,
     `Price on Amazon: £${product.price}`,
-    ...pages.map((p, i) => `--- page ${i}: ${retailerFor(p.url)} | ${p.title}\n${p.markdown.slice(0, PAGE_CHARS)}`),
+    ...pages.map((p, i) => `--- page ${i}: ${retailerFor(p.url)} | ${p.title}\n${cleanMarkdown(p.markdown).slice(0, PAGE_CHARS)}`),
   ].join('\n\n');
   return ClaudeOut.parse(extractJson(await askClaude(SYSTEM, user, timeoutMs, 600)));
 }
@@ -297,7 +330,7 @@ export async function liveSearch(product: Product, deadline: number): Promise<{ 
   let out: z.infer<typeof ClaudeOut> | null = null;
   let note = 'claude';
   try {
-    out = await claudeExtract(product, model, pages, Math.max(500, left()));
+    out = await claudeExtract(product, model, pages, Math.max(CLAUDE_MIN_MS, left()));
   } catch (e: any) {
     note = `no claude (${String(e?.message ?? e)}), price parser`;
   }

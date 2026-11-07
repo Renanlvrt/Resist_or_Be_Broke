@@ -3,6 +3,11 @@ import { createInterrogation, type Interrogation } from '../../src/index';
 import demoProfile from '../../../shared/demo-profile.json';
 import { detectProduct, isProductUrl } from './detect';
 
+/** All side effects live in initBridge so the module can be imported at build time (WXT) without touching window/chrome.
+ *  integrated=true: no own panel; a headless EventUi emits `keephard:ui` events for the host UI (Pocket/Bloub). */
+export function initBridge(opts: { integrated?: boolean } = {}): void {
+const integrated = !!opts.integrated;
+
 const BACKEND = 'http://localhost:8787';
 
 // Cross-world note: a CustomEvent dispatched from the page's main world arrives here with detail === null
@@ -132,12 +137,13 @@ function closeAll(why: string) {
 /** not found / search failed: one dry line, neutral avatar, then auto-close */
 async function endNotFound(why: string) {
   offerGen++;
-  const line = NOT_FOUND_LINES[nfIdx++ % NOT_FOUND_LINES.length];
+  const line = NOT_FOUND_LINES[nfIdx++ % NOT_FOUND_LINES.length]!;
   clearTimeout(closeT);
-  closeT = setTimeout(() => closeAll('notfound hard cap'), 14000);
-  try { stop(); ui?.hideOffer(); ui?.peek(true); ui?.state('idle'); emit('state', { state: 'idle' }); emit('caption', { text: line, who: 'avatar' }); ui?.caption(line, 'avatar'); ui?.scheduleHide(60000); } catch { /* ignore */ }
-  try { await Promise.race([sayLine(line, 'idle'), new Promise((r) => setTimeout(r, 5000))]); } catch (e) { console.warn('[keephard] say failed', e); }
+  closeT = setTimeout(() => closeAll('notfound hard cap'), integrated ? 40000 : 14000);
+  try { if (!integrated) stop(); ui?.hideOffer(); ui?.peek(true); ui?.state('idle'); emit('state', { state: 'idle' }); emit('caption', { text: line, who: 'avatar' }); ui?.caption(line, 'avatar'); ui?.scheduleHide(60000); } catch { /* ignore */ }
+  try { await Promise.race([sayMuted(line, 'idle'), new Promise((r) => setTimeout(r, 5000))]); } catch (e) { console.warn('[keephard] say failed', e); }
   try { ui?.state('idle'); } catch { /* ignore */ }
+  if (integrated) { await armGrace(); } // mic stays open ~8s; a spoken reply gets one closing line
   clearTimeout(closeT);
   ui?.fadeOut(4000);
   closeT = setTimeout(() => closeAll(why), 4400);
@@ -159,19 +165,19 @@ async function doSearch(product: any, demo?: boolean) {
   }
 }
 
-const NUDGES = ['Hello!!!!', 'Hellooo? Anyone there?', 'Earth to {n}! Are you still with me?', 'Hey! Still there?', 'Come on, talk to me!'];
+const NUDGES = ['Go on.', 'Still there?', 'Right then. I am waiting.', 'Not like you, that. Go on.', 'Take your time. Not too much of it, mind.'];
 let autoRedirect = true;
 function mascotPresent(): boolean {
   try { return !!document.querySelector('[data-keephard-mascot],[id*="bloub" i],[class*="bloub" i]'); } catch { return false; }
 }
 const K_DONE = 'keephard.done.';
-const prodKey = (p: any): string => { const m = String(p?.url || location.href).match(/\/(?:dp|gp\/product)\/([A-Z0-9]{8,12})/i); return (m ? m[1].toUpperCase() : String(p?.url || location.href)).slice(0, 200); };
+const prodKey = (p: any): string => { const m = String(p?.url || location.href).match(/\/(?:dp|gp\/product)\/([A-Z0-9]{8,12})/i); return (m ? m[1]!.toUpperCase() : String(p?.url || location.href)).slice(0, 200); };
 const started = new Set<string>();
 function wasDone(k: string): boolean { if (started.has(k)) return true; try { return !!sessionStorage.getItem(K_DONE + k); } catch { return false; } }
 function markDone(k: string) { started.add(k); try { sessionStorage.setItem(K_DONE + k, '1'); } catch { /* ignore */ } }
 function clearDone() { started.clear(); try { Object.keys(sessionStorage).filter((x) => x.startsWith(K_DONE)).forEach((x) => sessionStorage.removeItem(x)); } catch { /* ignore */ } }
 let idleT: any, capT: any;
-function clearTimers() { clearTimeout(idleT); clearTimeout(capT); }
+function clearTimers() { clearTimeout(idleT); clearTimeout(capT); clearTimeout(graceT); }
 /** quiet shutdown: close session + mic, hide bubble, no spoken line */
 function quietEnd(why: string) {
   clearTimers(); stop(); offerGen++;
@@ -191,7 +197,7 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
   let shown = false;
   const wd = setTimeout(() => { if (!shown) closeAll('verdict watchdog'); }, 15000);
   try {
-    if (s) { try { await Promise.race([s.agentDone(), new Promise((r) => setTimeout(r, 6000))]); s.endVoice(); } catch { /* ignore */ } } // one speaking voice at a time; mic off after the verdict
+    if (s) { try { await Promise.race([s.agentDone(), new Promise((r) => setTimeout(r, 6000))]); if (!integrated) s.endVoice(); } catch { /* ignore */ } } // one speaking voice at a time; mic off after the verdict
     const result = await doSearch(product, demo);
     if (!result || !result.found || !result.alternative) { shown = true; clearTimeout(wd); await endNotFound(result ? 'not found' : 'search failed'); return; }
     shown = true; clearTimeout(wd);
@@ -199,6 +205,7 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
     const alt = result.alternative;
     const url = safeHttp(alt.url);
     let settled = false;
+    const impact = integrated && verdict === 'reject';
     const go = async () => {
       if (settled || gen !== offerGen) return;
       settled = true; offerGen++; stop();
@@ -210,24 +217,55 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
         emit('savings', { amount: entry.amount, label: entry.label, at: entry.at, savedByKeepHard: total });
       }
       emit('redirect', { url });
+      if (integrated) { (ui as any)?.recovered?.(Number(product?.price) || 0, amount); await new Promise((r) => setTimeout(r, 1600)); } // let the dashboard show the goal recovering
       window.location.assign(url);
     };
-    const cancel = () => { if (settled) return; settled = true; offerGen++; stop(); ui?.hideOffer(); emit('offerdismissed', {}); };
+    const cancel = () => { if (settled) return; settled = true; offerGen++; if (!(integrated && closingHandled)) stop(); ui?.hideOffer(); emit('offerdismissed', {}); };
+    if (impact) { // reject: show what these shoes do to the goal, say the cached line, THEN the card
+      ui?.impact(Number(product?.price) || 0); emit('impact', { price: Number(product?.price) || 0 });
+      emit('state', { state: 'disappointed' });
+      try { await Promise.race([sayMuted(IMPACT_LINE, 'disappointed'), new Promise((r) => setTimeout(r, 9000))]); }
+      catch (e) { console.warn('[keephard] say failed', e); }
+      if (gen !== offerGen) return;
+      emit('state', { state: 'happy' });
+    }
     ui?.offer(result, (opened) => { if (opened) void go(); else cancel(); });
     emit('offer', { result, verdict });
-    if (result.spokenLine) {
-      try { await Promise.race([sayLine(result.spokenLine, 'happy'), new Promise((r) => setTimeout(r, 8000))]); }
+    if (impact) { /* line already spoken */ } else if (result.spokenLine) {
+      try { await Promise.race([sayMuted(result.spokenLine, 'happy'), new Promise((r) => setTimeout(r, 8000))]); }
       catch (e) { console.warn('[keephard] say failed', e); }
     } else emit('state', { state: 'happy' });
-    if (autoRedirect && url && !settled && gen === offerGen) ui?.countdown(3, () => void go(), cancel);
-    else if (!settled) stop(); // card only: voice session fully closed
+    if (autoRedirect && url && !settled && gen === offerGen) { ui?.countdown(3, () => void go(), cancel); if (integrated) void armGrace(); }
+    else if (!settled) { if (integrated) void armGrace(); else stop(); } // card only: standalone closes the voice; integrated keeps a grace window
   } catch (e) { console.warn('[keephard] offer beat failed', e); if (!shown) { shown = true; clearTimeout(wd); await endNotFound('error'); } }
   finally { clearTimeout(wd); chainBusy = false; }
 }
 
+// Integrated mode: after the verdict the live session + mic stay open for a ~8s grace window after the last avatar
+// speech. If the user says something, the live agent answers with ONE closing line; then the mic is closed fully.
+const GRACE_MS = 8000;
+let graceT: any, graceDone: (() => void) | undefined, closingHandled = false, verdictSeen = false;
+function armGrace(): Promise<void> {
+  if (!integrated || !session || closingHandled) return Promise.resolve();
+  clearTimeout(graceT);
+  return new Promise<void>((res) => {
+    graceDone = res;
+    graceT = setTimeout(() => { graceDone = undefined; stop(); res(); }, GRACE_MS);
+  });
+}
+/** our own TTS (cached backend voice) with the live mic muted so it cannot hear itself */
+async function sayMuted(text: string, state: string) {
+  const s = session; const conv = (s as any)?.conv;
+  try { conv?.setMicMuted?.(true); } catch { /* ignore */ }
+  try { return await sayLine(text, state); }
+  finally { try { if (session === s) conv?.setMicMuted?.(false); } catch { /* ignore */ } }
+}
+
 function stop() {
+  clearTimeout(graceT); const gd = graceDone; graceDone = undefined;
   session?.stop();
   session = undefined;
+  gd?.();
 }
 
 function startSession(d: any, force = false): Promise<void> {
@@ -238,7 +276,7 @@ function startSession(d: any, force = false): Promise<void> {
   stop();
   lastDemo = !!d.demo;
   lastProduct = d.product;
-  userLines = []; reasonSummary = '';
+  userLines = []; reasonSummary = ''; verdictSeen = false; closingHandled = false;
   autoChain = d.autoSavings !== false;
   const s = createInterrogation({
     profile: d.profile || (demoProfile as any),
@@ -274,9 +312,15 @@ function startSession(d: any, force = false): Promise<void> {
     if (session !== s) return;
     if (who === 'user') { userLines.push(text); userSpoke = true; clearTimeout(idleT); } else if (!gotQ) { gotQ = true; }
     emit('caption', { text, who }); ui?.caption(text, who);
+    if (who === 'user' && integrated && verdictSeen && !closingHandled) { // spoke after the verdict: pause auto-redirect, let the agent say ONE closing line
+      closingHandled = true; clearTimeout(graceT);
+      (ui as any)?.pauseCountdown?.();
+      const done = graceDone; graceDone = undefined;
+      void (async () => { await new Promise((r) => setTimeout(r, 1800)); try { await s.agentDone(12000); } catch { /* ignore */ } if (session === s) stop(); done?.(); })();
+    }
   });
   s.on('verdict', (verdict) => {
-    if (session !== s) return; clearTimeout(idleT); clearTimeout(capT); if (verdict?.userReasonSummary) reasonSummary = String(verdict.userReasonSummary); emit('verdict', { verdict }); ui?.scheduleHide(60000); ui?.caption(`Verdict: ${verdict.verdict} (${verdict.reasonCategory})`, 'avatar');
+    if (session !== s) return; verdictSeen = true; clearTimeout(idleT); clearTimeout(capT); if (verdict?.userReasonSummary) reasonSummary = String(verdict.userReasonSummary); emit('verdict', { verdict }); ui?.scheduleHide(60000); if (!integrated) ui?.caption(`Verdict: ${verdict.verdict} (${verdict.reasonCategory})`, 'avatar');
     if (autoChain) void offerBeat(d.product, d.demo, s, verdict.verdict);
   });
   s.on('fallback', (reason) => { if (session !== s) return; emit('fallback', { reason }); ui?.fallback(reason); });
@@ -539,6 +583,7 @@ class Panel {
     this.peekEl.classList.toggle('open', on);
     if (on) { this.peekEl.style.transition = ''; this.peekEl.style.opacity = ''; }
     if (on !== was) emit('peek', { on }); if (!on) { this.pcap.textContent = ''; this.pme.textContent = ''; this.ptyped.classList.remove('open'); } }
+  impact(_price: number) { /* standalone panel has no dashboard */ }
   hideTest() { (this.root.querySelector('.go') as HTMLElement).style.display = 'none'; (this.root.querySelector('.skip') as HTMLElement).style.display = 'none'; }
   tap(on: boolean) { this.tapEl.classList.toggle('open', on); }
   typedOpen() { this.ptyped.classList.add('open'); }
@@ -573,8 +618,57 @@ class Panel {
   }
 }
 
+const IMPACT_LINE = 'Buy these and your flight home slips. Here is a cheaper pair.';
+
+/** Headless UI: same method surface as Panel, but everything goes out as `keephard:ui` events
+ *  ({kind, ...}) and comes back as `keephard:offerchoice {buy}` / `keephard:stay`. */
+class EventUi {
+  private offerDone?: (opened: boolean) => void;
+  private cdCancel?: () => void;
+  private cdT: any; private hideT: any;
+  private peekOn = false;
+  constructor() {
+    window.addEventListener('keephard:offerchoice', (e) => {
+      const d = readDetail(e); const f = this.offerDone;
+      if (!d || !f) return;
+      this.offerDone = undefined; this.hideOffer(); f(!!d.buy);
+    });
+    window.addEventListener('keephard:stay', () => {
+      clearInterval(this.cdT); const c = this.cdCancel; this.cdCancel = undefined; this.offerDone = undefined; c?.();
+    });
+  }
+  private ui(kind: string, extra: Record<string, unknown> = {}) { emit('ui', { kind, ...extra }); }
+  result(_r: any) { /* the offer card carries the result */ }
+  hideOffer() { clearInterval(this.cdT); this.cdCancel = undefined; this.ui('hideoffer'); }
+  countdown(n: number, go: () => void, cancel: () => void) {
+    clearInterval(this.cdT); this.cdCancel = cancel;
+    let left = n;
+    const tick = () => { if (left <= 0) { clearInterval(this.cdT); this.cdCancel = undefined; go(); return; } this.ui('countdown', { left }); left--; };
+    tick(); this.cdT = setInterval(tick, 1000);
+  }
+  offer(r: any, done: (opened: boolean) => void) { this.offerDone = done; this.ui('offer', { result: r }); }
+  pauseCountdown() { clearInterval(this.cdT); this.cdCancel = undefined; this.ui('countdown', { left: 0 }); }
+  impact(price: number) { this.ui('impact', { price, goal: (demoProfile as any).goal }); }
+  recovered(price: number, amount: number) { this.ui('recovered', { price, amount }); }
+  toast(t: string) { this.ui('toast', { text: t }); }
+  peek(on: boolean) {
+    if (on === this.peekOn) return;
+    this.peekOn = on; emit('peek', { on }); this.ui('peek', { on });
+  }
+  hideTest() { /* no test buttons when integrated */ }
+  tap(on: boolean) { this.ui('tap', { on }); }
+  typedOpen() { this.ui('typedopen'); }
+  scheduleHide(ms = 15000) { clearTimeout(this.hideT); this.hideT = setTimeout(() => this.peek(false), ms); }
+  fadeOut(ms = 4000) { this.scheduleHide(ms); }
+  dismiss() { this.hideOffer(); this.peek(false); }
+  state(s: string) { this.ui('state', { state: s }); }
+  caption(text: string, who: 'avatar' | 'user') { this.ui('caption', { text, who }); }
+  error(msg: string) { this.ui('error', { text: msg }); }
+  fallback(reason: string) { this.ui('error', { text: 'Voice fallback: ' + reason }); this.ui('typedopen'); }
+}
+
 function mountUi() {
-  try { ui = new Panel(); } catch (e) { console.warn('[keephard] UI mount failed', e); }
+  try { ui = integrated ? (new EventUi() as unknown as Panel) : new Panel(); } catch (e) { console.warn('[keephard] UI mount failed', e); }
 }
 if (window.top === window) {
   if (document.body) mountUi(); else document.addEventListener('DOMContentLoaded', mountUi);
@@ -596,7 +690,7 @@ function ensureUi(): Panel | undefined { if (!ui && window.top === window) mount
 
 function productKey(): string {
   const m = location.pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{8,12})/i);
-  return m ? m[1].toUpperCase() : '';
+  return m ? m[1]!.toUpperCase() : '';
 }
 
 // AudioContext.resume() does not reject when autoplay-blocked, it stays pending: race it with a timeout.
@@ -618,7 +712,7 @@ async function beginSession(product: any) {
   p?.tap(false); p?.peek(true); p?.state('connecting');
   p?.caption('Allow the mic to talk', 'avatar');
   p?.hideTest();
-  const short = String(product?.title || 'those').split(/[,(-]/)[0].trim().slice(0, 50);
+  const short = String(product?.title || 'those').split(/[,(-]/)[0]!.trim().slice(0, 50);
   // probe the mic so a denial / dismissed prompt is visible; typed input is the fallback
   try {
     if (!micGranted) { const st = await navigator.mediaDevices.getUserMedia({ audio: true }); st.getTracks().forEach((t) => t.stop()); }
@@ -650,8 +744,14 @@ function armGesture() {
   for (const t of GESTURES) window.addEventListener(t, onGesture, { capture: true, passive: true });
 }
 
+let uiReady = !integrated;
+let uiReadyWake: (() => void) | undefined;
+window.addEventListener('keephard:uiready', () => { uiReady = true; uiReadyWake?.(); emit('settings', { enabled, demo: demoMode, autoRedirect, integrated }); });
+
 async function autoStart(product: any) {
   if (session) return; // an interrogation is already running (manual start)
+  if (!uiReady) await new Promise<void>((r) => { uiReadyWake = r; setTimeout(r, 3000); }); // host UI mounts at document_idle
+  if (session) return;
   emit('detected', { product });
   prewarmSession(product);
   // search prefetch: backend runs the live search in the background so the real call answers from memory
@@ -749,3 +849,4 @@ if (window.top === window) {
 }
 
 emit('ready');
+}

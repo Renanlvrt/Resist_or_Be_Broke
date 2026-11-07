@@ -20,7 +20,7 @@ export async function liveSearch(title: string, brand: string, price: number): P
     const m = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST', signal: ctl.signal,
       headers: { 'content-type': 'application/json', 'x-api-key': ak, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: 'claude-sonnet-5-5', max_tokens: 300, messages: [{ role: 'user', content:
+      body: JSON.stringify({ model: 'claude-haiku-5-5', max_tokens: 300, messages: [{ role: 'user', content:
         `Product on Amazon UK: "${brand} ${title}" at £${price}. From the pages below pick the cheapest UK GBP listing of the EXACT same model, strictly cheaper than £${price}, price visible in the text. ` +
         `Reply ONLY JSON {"title":"","brand":"","price":0,"url":"","retailer":"","sameModel":true} or {"none":true}.
 

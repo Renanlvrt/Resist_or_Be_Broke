@@ -1,5 +1,5 @@
 // Minimal Anthropic Messages call via fetch. Returns text or throws.
-export const MODEL = 'claude-sonnet-5-5';
+export const MODEL = 'claude-haiku-5-5';
 export async function askClaude(system: string, user: string, timeoutMs: number, maxTokens = 400): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('no ANTHROPIC_API_KEY');
