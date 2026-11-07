@@ -242,22 +242,34 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
     shown = true; clearTimeout(wd);
     const alt = result.alternative;
     const url = safeHttp(alt.url);
-    let settled = false;
+    let settled = false, choiceT: any;
+    const bye = async (line: string) => { // the live agent is done: one short goodbye in the same voice, then close
+      try { s?.endVoice(); } catch { /* ignore */ }
+      emit('caption', { text: line, who: 'avatar' }); ui?.caption(line, 'avatar');
+      try { await sayLine(line, 'happy', 'beat'); } catch { /* text is enough */ }
+    };
     const go = async () => {
       if (settled || gen !== offerGen) return;
-      settled = true; offerGen++; stop();
+      settled = true; offerGen++; clearTimeout(choiceT); clearTimeout(graceT);
       ui?.hideOffer();
-      if (!url) { await endNotFound('bad url'); return; }
+      if (!url) { stop(); await endNotFound('bad url'); return; }
       const amount = Number(result.savings) || 0;
       if (amount > 0) {
         const { entry, total } = await recordSavings(amount, `${alt.title} @ ${alt.retailer}`);
         emit('savings', { amount: entry.amount, label: entry.label, at: entry.at, savedByKeepHard: total });
       }
+      await bye(BYE_GO);
+      stop();
+      // new tab, Amazon stays open (background opens it: no popup blocker after the goodbye)
+      try { await chrome.runtime.sendMessage({ type: 'keephard:openTab', url }); } catch { window.open(url, '_blank'); }
       emit('redirect', { url });
-      if (integrated) { (ui as any)?.recovered?.(Number(product?.price) || 0, amount); await new Promise((r) => setTimeout(r, 1600)); } // let the dashboard show the goal recovering
-      window.location.assign(url);
     };
-    const cancel = () => { if (settled) return; settled = true; offerGen++; if (!(integrated && closingHandled)) stop(); ui?.hideOffer(); emit('offerdismissed', {}); };
+    const cancel = async () => {
+      if (settled) return; settled = true; offerGen++; clearTimeout(choiceT); clearTimeout(graceT);
+      ui?.hideOffer();
+      await bye(BYE_NO);
+      stop(); emit('offerdismissed', {});
+    };
     if (impact) { // beat line already played: now the savings line, THEN the card + countdown
       if (result.spokenLine) { await speak(String(result.spokenLine), 'happy', 'savings', 25000); if (gen !== offerGen) return; }
       emit('state', { state: 'happy' });
@@ -269,8 +281,12 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
       if (result.spokenLine) await speak(String(result.spokenLine), 'happy', 'savings', 25000); else emit('state', { state: 'happy' });
     }
     if (!final) return; // first reject: card + dashboard shown, session and mic stay open for the user's reply
-    if (autoRedirect && url && !settled && gen === offerGen) { ui?.countdown(3, () => void go(), cancel); if (integrated) void armGrace(); }
-    else if (!settled) { if (integrated) void armGrace(); else stop(); } // card only: standalone closes the voice; integrated keeps a grace window
+    // No auto-redirect: only "Buy it cheaper" opens the link. Ignored card -> goodbye, card disappears, no link.
+    if (!settled) {
+      try { s?.endVoice(); } catch { /* ignore */ } // agent is done: mic off, nothing else can talk while the card waits
+      const sess = session;
+      choiceT = setTimeout(() => { if (session === sess) void cancel(); }, 15000);
+    }
   } catch (e) { console.warn('[keephard] offer beat failed', e); if (!shown) { shown = true; clearTimeout(wd); await endNotFound('error'); } }
   finally { clearTimeout(wd); chainBusy = false; }
 }
@@ -659,7 +675,9 @@ class Panel {
 
 const IMPACT_LINE = 'Buy these and your flight home slips. Here is a cheaper pair.';
 const CAUTION_LINE = 'Careful, though. Look at what this does to your goal.';
-const WINE_BIG_LINE = "Your whole saving will drop after this, but it's on you!";
+const BYE_GO = 'Good call. Bye!';
+const BYE_NO = 'Alright then. Bye!';
+const WINE_BIG_LINE ="Your whole saving will drop after this, but it's on you!";
 
 /** Headless UI: same method surface as Panel, but everything goes out as `keephard:ui` events
  *  ({kind, ...}) and comes back as `keephard:offerchoice {buy}` / `keephard:stay`. */
