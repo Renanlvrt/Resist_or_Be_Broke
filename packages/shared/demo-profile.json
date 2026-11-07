@@ -1,0 +1,15 @@
+{
+  "name": "Sam",
+  "monthlyBudget": 1100,
+  "categories": {
+    "sport": { "limit": 40, "rule": "I can spend a bit on sport kit for my track and field" },
+    "fashion": { "limit": 0, "rule": "No fashion this month, it's not necessary" },
+    "eating_out": { "limit": 50, "rule": "Max £50 a month eating out" },
+    "groceries": { "limit": 200, "rule": "Groceries are fine" },
+    "tech": { "limit": 0, "rule": "No tech this month" },
+    "other": { "limit": 0, "rule": "Ask me why first" }
+  },
+  "goal": { "label": "Flight home", "amount": 150, "saved": 40, "by": "2026-12-15" },
+  "savedByKeepHard": 0,
+  "tone": "supportive"
+}

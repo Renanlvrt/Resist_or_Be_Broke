@@ -1,0 +1,30 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>KeepHard voice demo</title>
+<body style="font:14px system-ui;max-width:640px;margin:20px auto">
+<h3>@keephard/voice demo</h3>
+<p>Build first: <code>npm run build</code> in packages/voice (creates dist/index.js), then serve this folder (<code>npx serve .</code>) and open demo.html. Backend on :8787.</p>
+<button id="start">start()</button>
+<button id="say">say('Same shoes, 20 pounds cheaper')</button>
+<input id="txt" placeholder="typed reason" value="My friend has the same pair">
+<button id="send">submitTyped</button>
+<button id="stop">stop()</button>
+<pre id="log" style="background:#111;color:#9f9;padding:8px;height:300px;overflow:auto"></pre>
+<script type="module">
+import { createInterrogation } from './dist/index.js';
+const backendUrl = 'http://localhost:8787';
+const profile = await fetch('../shared/demo-profile.json').then(r => r.json());
+const product = { title: 'Nike Pegasus 41', brand: 'Nike', price: 120, currency: 'GBP', url: 'https://www.amazon.co.uk/dp/x', site: 'amazon.co.uk' };
+const log = (...a) => { const l = document.getElementById('log'); l.textContent += a.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join(' ') + '\n'; l.scrollTop = 1e9; };
+const s = createInterrogation({ profile, product, backendUrl, demo: true });
+s.on('state', st => log('state:', st));
+s.on('caption', (t, who) => log('caption[' + who + ']:', t));
+s.on('verdict', v => log('verdict:', v));
+s.on('fallback', r => log('FALLBACK:', r));
+s.on('error', e => log('error:', String(e)));
+const $ = id => document.getElementById(id);
+$('start').onclick = () => s.start();
+$('say').onclick = () => s.say('Same shoes, twenty pounds cheaper.');
+$('send').onclick = () => s.submitTyped($('txt').value);
+$('stop').onclick = () => s.stop();
+</script>

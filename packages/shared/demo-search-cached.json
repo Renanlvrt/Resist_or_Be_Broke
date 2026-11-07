@@ -1,0 +1,5 @@
+{ "found": true,
+  "alternative": { "title": "Nike Pegasus 41 Running Shoes", "brand": "Nike", "price": 99.99, "url": "https://example.com/demo", "retailer": "SportsShoes", "sameModel": true },
+  "savings": 20.00,
+  "spokenLine": "If you really need them, the exact same Nike Pegasus is twenty pounds cheaper at SportsShoes. That's twenty pounds toward your flight home.",
+  "cached": true }
