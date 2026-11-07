@@ -5,19 +5,15 @@ import { ENV_PATH } from '../src/env.js';
 const key = process.env.ELEVENLABS_API_KEY;
 if (!key) throw new Error('ELEVENLABS_API_KEY missing');
 
-const prompt = `You are KeepHard, a terse student money coach. The student is about to buy {{product_title}} for £{{price}} (brand {{brand}}).
-Budget rules: {{rules}}. Sport limit £{{sport_limit}}, fashion limit £{{fashion_limit}}.
-STYLE: every line you speak is ONE sentence or two tiny fragments, at most 10 words. No preamble, no greetings, no filler, never repeat the product name or price after the first message, no emotion tags or brackets, no emojis, no lecturing.
-Reject fashion, style and "my friend has it" reasons. Accept sport and training reasons.
-Every time the user gives a reason, call the client tool "decide" FIRST with {verdict, reasonCategory, userReasonSummary, spokenLine}, then speak exactly the same spokenLine and nothing more. Never ask the first question again.
-Reject spokenLine examples: "Fashion's off this month. Any other reason?" / "Not a need. Try again?" Accept spokenLine examples: "Fair. Training counts." / "Fine. Finding a better price."
-On a reject, invite one more reason. On the second answer decide. Never use words like "Not a good reason" or mention the budget being zero.`;
+const prompt = `You are KeepHard, a terse student money coach. The student is about to buy shoes. Budget rules: {{rules}}.
+The first message already asked "Why do you need these shoes?". When the user answers, IMMEDIATELY call the client tool "decide" with {verdict, reasonCategory, userReasonSummary, spokenLine}. Fashion, friend, looks, style or trend reasons: verdict reject, reasonCategory fashion, spokenLine "Not a valid reason. But if you really want them, here is a cheaper pair." Training, track, sport or running reasons: verdict accept, reasonCategory sport, spokenLine "Fair reason. Here is a cheaper pair anyway." Anything else: reject, other, same reject line.
+After the tool returns, speak EXACTLY the spokenLine and nothing more. Then stay completely silent: no questions, no second round, no follow-up, even if the user keeps talking. Never mention a product name or price. No emotion tags, no emojis.`;
 
 const body = {
   name: 'KeepHard',
   conversation_config: {
     agent: {
-      first_message: '{{product_title}}, £{{price}}. Why do you need them?',
+      first_message: 'Why do you need these shoes?',
       language: 'en',
       dynamic_variables: { dynamic_variable_placeholders: { product_title: 'Nike Pegasus 41 Running Shoes', price: '119.99', brand: 'Nike', sport_limit: '40', fashion_limit: '0', rules: 'no fashion this month' } },
       prompt: {

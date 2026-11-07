@@ -102,18 +102,29 @@ async function doSearch(product: any, demo?: boolean) {
   }
 }
 
-// Full savings beat: search -> say -> savings event + persist. found:false => silent.
-async function savingsBeat(product: any, demo?: boolean) {
+// Offer beat: (wait for the agent to finish) -> search -> say spokenLine -> clean card. Saving recorded ONLY on "Buy it cheaper".
+async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogation, verdict?: string) {
   if (chainBusy) return;
   chainBusy = true;
   try {
+    if (s) { await s.agentDone(); s.endVoice(); } // one speaking voice at a time; mic off after the verdict
     const result = await doSearch(product, demo);
-    if (!result || !result.found || !(Number(result.savings) > 0)) return;
-    const label = result.alternative ? `${result.alternative.title} @ ${result.alternative.retailer}` : 'Cheaper alternative';
+    if (!result || !result.found || !result.alternative) { ui?.hideOffer(); return; }
+    ui?.offer(result, async (opened) => {
+      if (!opened) { emit('offerdismissed', {}); return; }
+      const alt = result.alternative;
+      const amount = Number(result.savings) || 0;
+      const label = `${alt.title} @ ${alt.retailer}`;
+      try { window.open(alt.url, '_blank', 'noopener'); } catch { /* ignore */ }
+      if (amount > 0) {
+        const { entry, total } = await recordSavings(amount, label);
+        emit('savings', { amount: entry.amount, label: entry.label, at: entry.at, savedByKeepHard: total });
+        ui?.caption(`Saved £${entry.amount.toFixed(2)} (total £${total.toFixed(2)})`, 'avatar');
+      }
+    });
+    emit('offer', { result, verdict });
     if (result.spokenLine) { try { await sayLine(result.spokenLine, 'happy'); } catch (e) { console.warn('[keephard] say failed', e); } }
-    const { entry, total } = await recordSavings(Number(result.savings), label);
-    emit('savings', { amount: entry.amount, label: entry.label, at: entry.at, savedByKeepHard: total });
-    ui?.caption(`Saved £${entry.amount.toFixed(2)} (total £${total.toFixed(2)})`, 'avatar');
+    else emit('state', { state: 'happy' });
   } finally { chainBusy = false; }
 }
 
@@ -137,8 +148,8 @@ function startSession(d: any): Promise<void> {
   session = s;
   s.on('state', (state) => { emit('state', { state }); ui?.state(state); });
   s.on('caption', (text, who) => { emit('caption', { text, who }); ui?.caption(text, who); });
-  s.on('verdict', (verdict) => { emit('verdict', { verdict }); ui?.scheduleHide(verdict.verdict === 'accept' ? 25000 : 30000); ui?.caption(`Verdict: ${verdict.verdict} (${verdict.reasonCategory})`, 'avatar');
-    if (verdict.verdict === 'accept' && autoChain) void savingsBeat(d.product, d.demo);
+  s.on('verdict', (verdict) => { emit('verdict', { verdict }); ui?.scheduleHide(60000); ui?.caption(`Verdict: ${verdict.verdict} (${verdict.reasonCategory})`, 'avatar');
+    if (autoChain) void offerBeat(d.product, d.demo, s, verdict.verdict);
   });
   s.on('fallback', (reason) => { emit('fallback', { reason }); ui?.fallback(reason); });
   s.on('error', (err) => { console.warn('[keephard]', err); ui?.error(String((err as any)?.message || err)); });
@@ -179,7 +190,7 @@ window.addEventListener('keephard:typed', (e) => {
   if (session && d?.text) void session.submitTyped(d.text);
 });
 
-window.addEventListener('keephard:stop', () => { stop(); cancelAuto(); ui?.peek(false); ui?.state('idle'); });
+window.addEventListener('keephard:stop', () => { stop(); cancelAuto(); ui?.peek(false); ui?.hideOffer(); ui?.state('idle'); });
 
 // ---------- floating test button + panel (shadow DOM, immune to host CSS) ----------
 
@@ -226,6 +237,13 @@ input{flex:1;padding:4px;font-size:12px;border:1px solid #888;border-radius:4px}
 .pcap{max-height:70px;overflow:hidden}.pme{color:#9cc4ff;font-size:12px}
 .px{position:absolute;top:2px;right:6px;background:none;border:0;color:#aaa;font-size:16px;padding:0;box-shadow:none;cursor:pointer}
 .ptyped{display:none;gap:4px}.ptyped.open{display:flex}
+.offer{display:none;position:fixed;right:16px;bottom:16px;z-index:2147483647;width:300px;background:#fff;color:#111;border-radius:14px;box-shadow:0 10px 32px rgba(0,0,0,.45);padding:14px;font-size:13px;flex-direction:column;gap:6px;border-top:4px solid #f5c518}
+.offer.open{display:flex}
+.otitle{font-weight:700;font-size:14px;line-height:1.3}.oret{color:#555}.oprice{font-size:22px;font-weight:800}
+.badge{align-self:flex-start;background:#0a7a3b;color:#fff;border-radius:999px;padding:3px 10px;font-weight:700;font-size:12px}
+.obtns{display:flex;gap:8px;margin-top:6px}
+.obtns .buy{flex:1;background:#f5c518;color:#111;border:0;border-radius:8px;padding:10px;font-weight:800}
+.obtns .no{background:#fff;color:#444;border:1px solid #bbb;border-radius:8px;padding:10px;box-shadow:none}
 .tap{display:none;position:fixed;right:20px;bottom:20px;z-index:2147483647;background:#f5c518;color:#111;border-radius:999px;padding:16px 24px;font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 0 0 0 rgba(245,197,24,.7);animation:ring 1.5s infinite}
 .tap.open{display:block}
 @keyframes ring{0%{box-shadow:0 0 0 0 rgba(245,197,24,.7)}100%{box-shadow:0 0 0 26px rgba(245,197,24,0)}}
@@ -234,6 +252,7 @@ input{flex:1;padding:4px;font-size:12px;border:1px solid #888;border-radius:4px}
 <div class="peek"><button class="px" title="Close">&times;</button><div class="av">K</div>
   <div class="pbody"><div class="pcap"></div><div class="pme"></div>
     <div class="ptyped"><input placeholder="Type your reason..."><button>Send</button></div></div></div>
+<div class="offer"><div class="otitle"></div><div class="oret"></div><div class="oprice"></div><div class="badge"></div><div class="obtns"><button class="buy">Buy it cheaper</button><button class="no">No thanks</button></div></div>
 <div class="tap">Tap anywhere to talk</div>
 <div class="wrap">
   <div class="panel"><div class="state">state: idle</div><div class="err"></div><div class="log"></div>
@@ -253,6 +272,7 @@ class Panel {
   private input: HTMLInputElement;
   private panel: HTMLElement;
   private res: HTMLElement;
+  private offerEl!: HTMLElement;
   private peekEl!: HTMLElement; private pcap!: HTMLElement; private pme!: HTMLElement; private av!: HTMLElement;
   private ptyped!: HTMLElement; private tapEl!: HTMLElement; private hideT: any;
 
@@ -261,7 +281,7 @@ class Panel {
     const q = (s: string) => this.root.querySelector(s) as HTMLElement;
     this.panel = q('.panel'); this.log = q('.log'); this.stateEl = q('.state'); this.err = q('.err');
     this.typed = q('.typed'); this.input = q('input') as HTMLInputElement;
-    this.res = q('.res');
+    this.res = q('.res'); this.offerEl = q('.offer');
     this.peekEl = q('.peek'); this.pcap = q('.pcap'); this.pme = q('.pme'); this.av = q('.av');
     this.ptyped = q('.ptyped'); this.tapEl = q('.tap');
     q('.px').addEventListener('click', () => { stop(); this.peek(false); });
@@ -303,7 +323,7 @@ class Panel {
   private async onSkip() {
     this.panel.classList.add('open');
     try { await unlockAudio(); } catch { /* ignore */ }
-    await savingsBeat(lastProduct || DEMO_PRODUCT, lastDemo);
+    await offerBeat(lastProduct || DEMO_PRODUCT, lastDemo);
   }
 
   result(r: any) {
@@ -316,6 +336,20 @@ class Panel {
     this.res.classList.add('open');
   }
 
+  hideOffer() { this.offerEl.classList.remove('open'); }
+  offer(r: any, done: (opened: boolean) => void) {
+    const a = r.alternative, q = (s: string) => this.offerEl.querySelector(s) as HTMLElement;
+    q('.otitle').textContent = a.title;
+    q('.oret').textContent = a.retailer;
+    q('.oprice').textContent = '£' + Number(a.price).toFixed(2);
+    q('.badge').textContent = 'Save £' + Number(r.savings).toFixed(2);
+    const fresh = (sel: string) => { const o = q(sel); const n = o.cloneNode(true) as HTMLElement; o.replaceWith(n); return n; };
+    const hide = () => { this.hideOffer(); clearTimeout(this.hideT); };
+    fresh('.buy').addEventListener('click', () => { hide(); done(true); });
+    fresh('.no').addEventListener('click', () => { hide(); done(false); });
+    this.peekEl.classList.remove('open');
+    this.offerEl.classList.add('open');
+  }
   peek(on: boolean) { this.peekEl.classList.toggle('open', on); if (!on) { this.pcap.textContent = ''; this.pme.textContent = ''; this.ptyped.classList.remove('open'); } }
   hideTest() { (this.root.querySelector('.go') as HTMLElement).style.display = 'none'; (this.root.querySelector('.skip') as HTMLElement).style.display = 'none'; }
   tap(on: boolean) { this.tapEl.classList.toggle('open', on); }
@@ -389,6 +423,7 @@ async function tryUnlockAudio(): Promise<boolean> {
 async function beginSession(product: any) {
   const p = ensureUi();
   p?.tap(false); p?.peek(true); p?.state('connecting');
+  p?.caption('Allow the mic to talk', 'avatar');
   p?.hideTest();
   const short = String(product?.title || 'those').split(/[,(-]/)[0].trim().slice(0, 50);
   p?.caption(`Hold on. Before you buy the ${short}...`, 'avatar');
@@ -396,9 +431,11 @@ async function beginSession(product: any) {
   try {
     const st = await navigator.mediaDevices.getUserMedia({ audio: true });
     st.getTracks().forEach((t) => t.stop());
-  } catch {
+  } catch (e) {
+    console.warn('[keephard] mic unavailable:', e);
     p?.typedOpen();
-    p?.caption('Mic is off. Type your reason below.', 'avatar');
+    p?.error('Mic blocked: click the lock icon in the address bar, allow microphone. (' + String((e as any)?.name || e) + ')');
+    p?.caption('Mic blocked. Type your reason below.', 'avatar');
   }
   await startSession({ product, demo: demoMode });
 }

@@ -4,6 +4,7 @@ const BASE = process.env.BACKEND ?? 'http://localhost:8787';
 const rd = (f) => JSON.parse(readFileSync(new URL('../packages/shared/' + f, import.meta.url), 'utf8'));
 const profile = rd('demo-profile.json'), product = rd('demo-product.json');
 
+const VARIANT = process.argv[2] === 'sport' ? 'sport' : 'fashion';
 const r = await fetch(`${BASE}/api/voice/session`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ profile, product }) });
 if (!r.ok) { console.error('session failed', r.status, await r.text()); process.exit(2); }
 const { signedUrl, dynamicVariables } = await r.json();
@@ -32,6 +33,9 @@ async function waitFor(pred, ms) { const end = Date.now() + ms; while (Date.now(
 await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error('ws error')); });
 ws.send(JSON.stringify({ type: 'conversation_initiation_client_data', dynamic_variables: dynamicVariables }));
 await waitFor(() => events.some((e) => e.kind === 'say'), 15000); // first message
+const first = events.find((e) => e.kind === 'say')?.text;
+const firstOk = first === 'Why do you need these shoes?';
+console.log('FIRST MESSAGE:', firstOk ? 'PASS' : 'FAIL ' + first);
 await sleep(5000); // let the greeting finish so the text turn does not interrupt it
 
 async function round(n, text, expect) {
@@ -48,14 +52,17 @@ async function round(n, text, expect) {
     const p = tool.params ?? {};
     if (p.verdict !== expect.verdict) fails.push(`verdict ${p.verdict} != ${expect.verdict}`);
     if (p.reasonCategory !== expect.cat) fails.push(`category ${p.reasonCategory} != ${expect.cat}`);
-    if (p.spokenLine && p.spokenLine.split(/\s+/).length > 10) fails.push('spokenLine >10 words');
+    if (p.spokenLine && p.spokenLine.split(/\s+/).length > 12) fails.push('spokenLine >12 words');
   }
   if (!says.length) fails.push('no agent_response');
-  for (const s of says) if (s.split(/\s+/).length > 10) fails.push(`reply >10 words: "${s}"`);
+  const want = expect.verdict === 'reject' ? 'Not a valid reason. But if you really want them, here is a cheaper pair.' : 'Fair reason. Here is a cheaper pair anyway.';
+  if (says.length && !says.some((x) => x.trim() === want)) fails.push('spoken line mismatch');
+  for (const s of says) if (s.split(/\s+/).length > 12) fails.push(`reply >12 words: "${s}"`);
   console.log(`ROUND ${n}: ${fails.length ? 'FAIL ' + fails.join('; ') : 'PASS'} | latency to first agent response: ${firstResp ?? 'n/a'}ms`);
   return !fails.length;
 }
-const a = await round(1, 'My friend has the same pair, I want them', { verdict: 'reject', cat: 'fashion' });
-const b = await round(2, 'Okay, I actually need them for track and field training', { verdict: 'accept', cat: 'sport' });
+const a = VARIANT === 'sport'
+  ? await round(1, 'training for track', { verdict: 'accept', cat: 'sport' })
+  : await round(1, 'I need them for fashion, you know', { verdict: 'reject', cat: 'fashion' });
 ws.close();
-process.exit(a && b ? 0 : 1);
+process.exit(a && firstOk ? 0 : 1);
