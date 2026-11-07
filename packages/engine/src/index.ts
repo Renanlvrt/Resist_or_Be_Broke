@@ -8,3 +8,4 @@ export * from './policy';
 export * from './templates';
 export * from './profiles';
 export * from './log';
+export * from './history';

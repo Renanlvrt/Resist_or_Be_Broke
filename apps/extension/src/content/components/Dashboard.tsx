@@ -1,4 +1,4 @@
-import { forecast, gbp, prettyDate, type ISODate } from '@resist/engine';
+import { forecast, gbp, prettyDate, recap, type ISODate } from '@resist/engine';
 import { useEffect, useRef, useState } from 'react';
 import { resetDemo, type State } from '../../lib/storage';
 import { ForecastChart } from './ForecastChart';
@@ -17,6 +17,7 @@ export function Dashboard({ state, today, onClose }: Props) {
   const [tab, setTab] = useState<'plan' | 'recap'>('plan');
   const panel = useRef<HTMLDivElement>(null);
   const f = forecast(profile, today);
+  const month = recap(profile, log, today);
   const goalPct = Math.min(100, Math.round((profile.goal.saved / profile.goal.amount) * 100));
 
   useEffect(() => {
@@ -51,6 +52,13 @@ export function Dashboard({ state, today, onClose }: Props) {
 
         {tab === 'plan' ? (
           <div className="rob-dash-grid">
+            <p className="rob-stats rob-span2" aria-label="This month">
+              <span>Promises kept <b>{month.kept}</b></span>
+              <span aria-hidden="true">·</span>
+              <span>Overruled <b>{month.overruled}</b></span>
+              <span aria-hidden="true">·</span>
+              <span><b>{gbp(month.redirected)}</b> redirected to {profile.goal.label}</span>
+            </p>
             <section className="rob-card rob-span2">
               <h3>
                 Balance to {f.nextIncome ? `${f.nextIncome.label}, ${prettyDate(f.nextIncome.date)}` : 'the next 30 days'}

@@ -31,3 +31,18 @@
 .rob-chart-label { font-size: 11px; fill: var(--rob-muted); }
 .rob-chart-low { fill: var(--rob-amber); }
 .rob-chart-low-label { font-size: 12px; font-weight: 700; fill: var(--rob-ink); }
+.rob-stats { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; background: var(--rob-soft); border-radius: 10px; padding: 8px 14px; font-size: 14px; color: var(--rob-muted); }
+.rob-stats b { color: var(--rob-ink); font-size: 16px; }
+.rob-trend { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.rob-trend-svg { width: 100%; height: auto; max-height: 160px; }
+.rob-trend-axis { stroke: var(--rob-line); }
+.rob-trend-grid { stroke: var(--rob-line); stroke-dasharray: 2 4; }
+.rob-trend-target { stroke: var(--rob-muted); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .7; }
+.rob-trend-line { fill: none; stroke: var(--rob-brand); stroke-width: 2.5; stroke-linejoin: round; }
+.rob-trend-dot { fill: var(--rob-brand); stroke: #fff; stroke-width: 2; }
+.rob-trend-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; font-size: 13px; color: var(--rob-muted); }
+.rob-trend-foot b { color: var(--rob-ink); }
+.rob-trend-ok { color: var(--rob-brand); font-weight: 600; }
+.rob-trend-legend { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.rob-key { display: inline-block; width: 16px; height: 0; border-top: 2.5px solid var(--rob-brand); }
+.rob-key-target { border-top: 1.5px dashed var(--rob-muted); margin-left: 6px; }
