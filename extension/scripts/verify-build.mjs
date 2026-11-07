@@ -67,7 +67,7 @@ try {
   move(window.innerWidth - 10, window.innerHeight - 10);
   await wait(() => shadow.querySelector('[data-dashboard]'), 'intentional corner hover');
   assert.equal(shadow.querySelector('[data-saved-amount]').textContent, '£131');
-  assert.equal(shadow.querySelectorAll('.recap-goals li').length, 3);
+  assert.equal(shadow.querySelectorAll('.recap-goals li').length, 4);
   assert.equal(shadow.querySelectorAll('.receipt-section dl>div').length, 6);
   assert(!shadow.querySelector('[data-dashboard] svg,[data-dashboard] progress,[data-dashboard] .card'));
   assert.equal(shadow.querySelector('[data-body]').getAttribute('fill').toLowerCase(), '#f0b429');

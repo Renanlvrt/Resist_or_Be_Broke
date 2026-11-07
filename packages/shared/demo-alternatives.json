@@ -1,77 +1,292 @@
 {
   "B0DBBBN8YP": {
-    "aliases": ["B0D6RSL5C3"], "match": ["brooks", "glycerin"],
-    "title": "Brooks Glycerin 22 Men's Road Running Shoes", "brand": "Brooks", "amazonPrice": 184.00,
-    "alternative": { "title": "Brooks Glycerin 22 Men's Road Running Shoes - Smoke/Stormy/Orange", "brand": "Brooks", "price": 65.96,
+    "aliases": [
+      "B0D6RSL5C3"
+    ],
+    "match": [
+      "brooks",
+      "glycerin"
+    ],
+    "title": "Brooks Glycerin 22 Men's Road Running Shoes",
+    "brand": "Brooks",
+    "amazonPrice": 184,
+    "alternative": {
+      "title": "Brooks Glycerin 22 Men's Road Running Shoes - Smoke/Stormy/Orange",
+      "brand": "Brooks",
+      "price": 65.96,
       "url": "https://shop.profeet.co.uk/footwear/road-running-shoes/brooks-glycerin-22-mens-road-running-shoes--smokestormyorange__512",
-      "retailer": "Profeet", "colour": "orange", "sameModel": true, "verified": true, "note": "Pre-order status at time of check; was 164.90" },
+      "retailer": "Profeet",
+      "colour": "orange",
+      "sameModel": true,
+      "verified": true,
+      "note": "Pre-order status at time of check; was 164.90"
+    },
     "savings": 118.04,
-    "spokenLine": "Same Brooks Glycerin, over a hundred quid cheaper at Profeet. That is your flight home.",
+    "spokenLine": "Same Brooks Glycerin, over a hundred quid cheaper at Profeet. That is your summer holiday.",
     "variants": {
-      "orange": { "alternative": { "title": "Brooks Glycerin 22 Men's - Smoke/Stormy/Orange", "brand": "Brooks", "price": 65.96,
+      "orange": {
+        "alternative": {
+          "title": "Brooks Glycerin 22 Men's - Smoke/Stormy/Orange",
+          "brand": "Brooks",
+          "price": 65.96,
           "url": "https://shop.profeet.co.uk/footwear/road-running-shoes/brooks-glycerin-22-mens-road-running-shoes--smokestormyorange__512",
-          "retailer": "Profeet", "colour": "orange", "sameModel": true, "verified": true },
-        "savings": 118.04, "spokenLine": "Orange? Fine. Same Brooks in orange, over a hundred quid cheaper. That is your flight home." },
-      "red": { "alternative": { "title": "Brooks Glycerin 22 Men's - Smoke/Stormy/Orange (closest to red)", "brand": "Brooks", "price": 65.96,
+          "retailer": "Profeet",
+          "colour": "orange",
+          "sameModel": true,
+          "verified": true
+        },
+        "savings": 118.04,
+        "spokenLine": "Orange? Fine. Same Brooks in orange, over a hundred quid cheaper. That is your summer holiday."
+      },
+      "red": {
+        "alternative": {
+          "title": "Brooks Glycerin 22 Men's - Smoke/Stormy/Orange (closest to red)",
+          "brand": "Brooks",
+          "price": 65.96,
           "url": "https://shop.profeet.co.uk/footwear/road-running-shoes/brooks-glycerin-22-mens-road-running-shoes--smokestormyorange__512",
-          "retailer": "Profeet", "colour": "orange", "sameModel": true, "verified": true, "colourMatch": false },
-        "savings": 118.04, "spokenLine": "Red? Closest I could find is orange, same Brooks, a hundred quid cheaper." }
+          "retailer": "Profeet",
+          "colour": "orange",
+          "sameModel": true,
+          "verified": true,
+          "colourMatch": false
+        },
+        "savings": 118.04,
+        "spokenLine": "Red? Closest I could find is orange, same Brooks, a hundred quid cheaper."
+      }
     }
   },
   "FITVILLE": {
-    "aliases": [], "match": ["fitville"],
-    "title": "FitVille Mens Wide Fit Trainers Lightweight Sneakers", "brand": "FitVille", "amazonPrice": 44.99,
-    "alternative": { "title": "FitVille Men's Wide Fit Trainers (black)", "brand": "FitVille", "price": 36.99,
+    "aliases": [],
+    "match": [
+      "fitville"
+    ],
+    "title": "FitVille Mens Wide Fit Trainers Lightweight Sneakers",
+    "brand": "FitVille",
+    "amazonPrice": 44.99,
+    "alternative": {
+      "title": "FitVille Men's Wide Fit Trainers (black)",
+      "brand": "FitVille",
+      "price": 36.99,
       "url": "https://thefitville.uk/search?q=mens+wide+trainers",
-      "retailer": "FitVille UK", "colour": "black", "sameModel": false, "verified": false, "note": "price from a deal-aggregator listing (Amazon voucher deal 36.99); retailer search link" },
-    "savings": 8.00,
-    "spokenLine": "Same FitVille, eight pounds cheaper straight from the brand. That is your flight home.",
+      "retailer": "FitVille UK",
+      "colour": "black",
+      "sameModel": false,
+      "verified": false,
+      "note": "price from a deal-aggregator listing (Amazon voucher deal 36.99); retailer search link"
+    },
+    "savings": 8,
+    "spokenLine": "Same FitVille, eight pounds cheaper straight from the brand. That is your summer holiday.",
     "variants": {
-      "black": { "alternative": { "title": "FitVille Men's Wide Fit Trainers (black)", "brand": "FitVille", "price": 36.99,
-          "url": "https://thefitville.uk/search?q=mens+wide+trainers", "retailer": "FitVille UK", "colour": "black", "sameModel": false, "verified": false },
-        "savings": 8.00, "spokenLine": "Black? Fine. Same FitVille, eight quid cheaper. That is your flight home." }
+      "black": {
+        "alternative": {
+          "title": "FitVille Men's Wide Fit Trainers (black)",
+          "brand": "FitVille",
+          "price": 36.99,
+          "url": "https://thefitville.uk/search?q=mens+wide+trainers",
+          "retailer": "FitVille UK",
+          "colour": "black",
+          "sameModel": false,
+          "verified": false
+        },
+        "savings": 8,
+        "spokenLine": "Black? Fine. Same FitVille, eight quid cheaper. That is your summer holiday."
+      }
     }
   },
   "B08KKVTB76": {
-    "aliases": [], "match": ["puma", "viz runner"],
-    "title": "PUMA Men's Viz Runner WideCross-Trainer", "brand": "PUMA", "amazonPrice": 59.67,
-    "alternative": { "title": "PUMA Viz Runner Men's Trainers", "brand": "PUMA", "price": 44.99,
+    "aliases": [],
+    "match": [
+      "puma",
+      "viz runner"
+    ],
+    "title": "PUMA Men's Viz Runner WideCross-Trainer",
+    "brand": "PUMA",
+    "amazonPrice": 59.67,
+    "alternative": {
+      "title": "PUMA Viz Runner Men's Trainers",
+      "brand": "PUMA",
+      "price": 44.99,
       "url": "https://www.ebay.co.uk/sch/i.html?_nkw=PUMA+Viz+Runner+mens+trainers+new&LH_BIN=1",
-      "retailer": "eBay UK", "colour": "black", "sameModel": false, "verified": false, "note": "eBay live search; PriceSpy UK shows Viz Runner from 44.32 on Amazon" },
+      "retailer": "eBay UK",
+      "colour": "black",
+      "sameModel": false,
+      "verified": false,
+      "note": "eBay live search; PriceSpy UK shows Viz Runner from 44.32 on Amazon"
+    },
     "savings": 14.68,
-    "spokenLine": "Same PUMAs, fifteen pounds cheaper on eBay. That is your flight home.",
+    "spokenLine": "Same PUMAs, fifteen pounds cheaper on eBay. That is your summer holiday.",
     "variants": {
-      "black": { "alternative": { "title": "PUMA Viz Runner Men's Trainers (black)", "brand": "PUMA", "price": 44.99,
-          "url": "https://www.ebay.co.uk/sch/i.html?_nkw=PUMA+Viz+Runner+mens+trainers+black+new&LH_BIN=1", "retailer": "eBay UK", "colour": "black", "sameModel": false, "verified": false },
-        "savings": 14.68, "spokenLine": "Black? Fine. Same PUMAs, fifteen quid cheaper. That is your flight home." },
-      "grey": { "alternative": { "title": "PUMA Viz Runner Men's Trainers (grey)", "brand": "PUMA", "price": 44.99,
-          "url": "https://www.ebay.co.uk/sch/i.html?_nkw=PUMA+Viz+Runner+mens+trainers+grey+new&LH_BIN=1", "retailer": "eBay UK", "colour": "grey", "sameModel": false, "verified": false },
-        "savings": 14.68, "spokenLine": "Grey? Fine. Same PUMAs, fifteen quid cheaper. That is your flight home." }
+      "black": {
+        "alternative": {
+          "title": "PUMA Viz Runner Men's Trainers (black)",
+          "brand": "PUMA",
+          "price": 44.99,
+          "url": "https://www.ebay.co.uk/sch/i.html?_nkw=PUMA+Viz+Runner+mens+trainers+black+new&LH_BIN=1",
+          "retailer": "eBay UK",
+          "colour": "black",
+          "sameModel": false,
+          "verified": false
+        },
+        "savings": 14.68,
+        "spokenLine": "Black? Fine. Same PUMAs, fifteen quid cheaper. That is your summer holiday."
+      },
+      "grey": {
+        "alternative": {
+          "title": "PUMA Viz Runner Men's Trainers (grey)",
+          "brand": "PUMA",
+          "price": 44.99,
+          "url": "https://www.ebay.co.uk/sch/i.html?_nkw=PUMA+Viz+Runner+mens+trainers+grey+new&LH_BIN=1",
+          "retailer": "eBay UK",
+          "colour": "grey",
+          "sameModel": false,
+          "verified": false
+        },
+        "savings": 14.68,
+        "spokenLine": "Grey? Fine. Same PUMAs, fifteen quid cheaper. That is your summer holiday."
+      }
     }
+  },
+  "B0CT3YN263": {
+    "aliases": [],
+    "match": [
+      "nike",
+      "pegasus",
+      "41"
+    ],
+    "title": "Nike Men's Pegasus 41",
+    "brand": "Nike",
+    "amazonPrice": 105.76,
+    "alternative": {
+      "title": "Nike Pegasus 41 Road Running Shoes Mens",
+      "price": 69,
+      "url": "https://www.sportsdirect.com/nike-pegasus-41-road-running-shoes-mens-210014",
+      "retailer": "Sports Direct",
+      "colour": "Black/White",
+      "brand": "Nike",
+      "sameModel": true,
+      "verified": true
+    },
+    "savings": 36.76,
+    "spokenLine": "Same Nike Pegasus 41, £36.76 cheaper at Sports Direct.",
+    "variants": {}
+  },
+  "B08SC2K82G": {
+    "aliases": [],
+    "match": [
+      "nike",
+      "air max sc"
+    ],
+    "title": "Nike Men's Air Max SC",
+    "brand": "Nike",
+    "amazonPrice": 80,
+    "alternative": {
+      "title": "Nike Men's Air Max SC Runners",
+      "price": 60,
+      "url": "https://www.sportsdirect.com/nike-mens-air-max-sc-runners-121021",
+      "retailer": "Sports Direct",
+      "colour": "Black/White",
+      "brand": "Nike",
+      "sameModel": true,
+      "verified": true
+    },
+    "savings": 20,
+    "spokenLine": "Same Nike Air Max SC, £20 cheaper at Sports Direct.",
+    "variants": {}
+  },
+  "B0D9YGK5Z7": {
+    "aliases": [
+      "B098F7DSB7",
+      "B098F513LP"
+    ],
+    "match": [
+      "nike",
+      "court vision low"
+    ],
+    "title": "Nike Men's Court Vision Low Next Nature",
+    "brand": "Nike",
+    "amazonPrice": 64.99,
+    "alternative": {
+      "title": "Nike Men's Court Vision Next Nature Low-Top Trainers",
+      "price": 55,
+      "url": "https://www.sportsdirect.com/nike-mens-court-vision-next-nature-low-top-trainers-161056",
+      "retailer": "Sports Direct",
+      "colour": "Triple Black",
+      "brand": "Nike",
+      "sameModel": true,
+      "verified": true
+    },
+    "savings": 9.99,
+    "spokenLine": "Same Nike Court Vision Low, £9.99 cheaper at Sports Direct.",
+    "variants": {}
+  },
+  "B0983K5N47": {
+    "aliases": [],
+    "match": [
+      "nike",
+      "court vision low"
+    ],
+    "title": "Nike Men's Court Vision Low Next Nature",
+    "brand": "Nike",
+    "amazonPrice": 68.49,
+    "alternative": {
+      "title": "Nike Men's Court Vision Next Nature Low-Top Trainers",
+      "price": 55,
+      "url": "https://www.sportsdirect.com/nike-mens-court-vision-next-nature-low-top-trainers-161056",
+      "retailer": "Sports Direct",
+      "colour": "Triple Black",
+      "brand": "Nike",
+      "sameModel": true,
+      "verified": true
+    },
+    "savings": 13.49,
+    "spokenLine": "Same Nike Court Vision Low, £13.49 cheaper at Sports Direct.",
+    "variants": {}
+  },
+  "B0F34CHLL7": {
+    "aliases": [],
+    "match": [
+      "nike",
+      "downshifter",
+      "13"
+    ],
+    "title": "Nike Men's Downshifter 13",
+    "brand": "Nike",
+    "amazonPrice": 59.99,
+    "alternative": {
+      "title": "Nike Downshifter 13",
+      "price": 35,
+      "url": "https://www.sportsdirect.com/nike-nike-downshifter-13-121006",
+      "retailer": "Sports Direct",
+      "brand": "Nike",
+      "sameModel": true,
+      "verified": true
+    },
+    "savings": 24.99,
+    "spokenLine": "Same Nike Downshifter 13, £24.99 cheaper at Sports Direct.",
+    "variants": {}
   },
   "B0DPHTGD5C": {
-    "aliases": [], "match": ["nike", "revolution 8"],
-    "title": "Nike Men's Revolution 8 Sneakers, Black/White", "brand": "Nike", "amazonPrice": 45.00,
-    "alternative": { "title": "Nike Revolution 8 Men's Road Running Shoes (White/Pure Platinum/Black)", "brand": "Nike", "price": 35.97,
-      "url": "https://www.gooutdoors.co.uk/products/nike-mens-revolution-8-road-running-shoes-white-pure-platinum-black-769189",
-      "retailer": "GO Outdoors", "colour": "white", "sameModel": true, "verified": false, "note": "member price 35.97 from search snippet, page blocks fetch; SportsShoes verified 49.99 is dearer than Amazon" },
-    "savings": 9.03,
-    "spokenLine": "Same Nike Revolution, nine pounds cheaper at GO Outdoors. That is your flight home.",
-    "variants": {
-      "white": { "alternative": { "title": "Nike Revolution 8 Men's (White/Pure Platinum/Black)", "brand": "Nike", "price": 35.97,
-          "url": "https://www.gooutdoors.co.uk/products/nike-mens-revolution-8-road-running-shoes-white-pure-platinum-black-769189",
-          "retailer": "GO Outdoors", "colour": "white", "sameModel": true, "verified": false },
-        "savings": 9.03, "spokenLine": "White? Fine. Same Nike Revolution, nine quid cheaper. That is your flight home." }
-    }
-  },
-  "NIKEDOWNSHIFTER14": {
-    "aliases": [], "match": ["nike", "downshifter"],
-    "title": "Nike Men's Downshifter 14, Black", "brand": "Nike", "amazonPrice": 48.75,
-    "alternative": { "title": "Nike Downshifter 14 Men's Road Running Shoes", "brand": "Nike", "price": 44.99,
-      "url": "https://www.sportsshoes.com/search?q=nike+downshifter+14",
-      "retailer": "SportsShoes", "colour": "black", "sameModel": true, "verified": false, "note": "estimate; Nike UK and Foot Locker list 64.99, so Amazon is already cheap" },
-    "savings": 3.76,
-    "spokenLine": "Same Nike Downshifter, a few quid cheaper at SportsShoes. Small win, still a win.",
+    "aliases": [],
+    "match": [
+      "nike",
+      "revolution",
+      "8"
+    ],
+    "title": "Nike Men's Revolution 8",
+    "brand": "Nike",
+    "amazonPrice": 45,
+    "alternative": {
+      "title": "Nike Revolution 8 Men's Running Shoes - HO25",
+      "price": 29.99,
+      "url": "https://www.sportsshoes.com/product/nik24541/nike-revolution-8-men's-running-shoes---ho25",
+      "retailer": "SportsShoes",
+      "colour": "Midnight Navy",
+      "brand": "Nike",
+      "sameModel": true,
+      "verified": true
+    },
+    "savings": 15.01,
+    "spokenLine": "Same Nike Revolution 8, £15.01 cheaper at SportsShoes.",
     "variants": {}
   }
 }

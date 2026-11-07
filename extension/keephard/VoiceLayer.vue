@@ -1,31 +1,21 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onBeforeUnmount, onMounted } from 'vue';
+import { mountTranscript } from './transcript';
 import { kh } from './store';
 import { fmtGbp } from './impact';
-const typed = ref('');
+let tr: { destroy(): void } | undefined;
+onMounted(() => { tr = mountTranscript(); });
+onBeforeUnmount(() => tr?.destroy());
 const send = (name: string, detail?: unknown) => window.dispatchEvent(new CustomEvent('keephard:' + name, { detail }));
-function submit() { const text = typed.value.trim(); if (!text) return; typed.value = ''; kh.userLine = text; send('typed', { text }); }
-function close() { send('stop'); }
 const buy = () => send('offerchoice', { buy: true });
 const no = () => send('offerchoice', { buy: false });
 const stay = () => send('stay');
-const stop = (e: Event) => e.stopPropagation();
 </script>
 
 <template>
   <div class="kh-layer" data-keephard-layer>
     <div v-if="kh.toast" class="kh-toast" role="status">{{ kh.toast }}</div>
     <button v-if="kh.tap && !kh.offer" class="kh-tap" type="button">Right then. Tap anywhere.</button>
-    <section v-if="kh.active && !kh.offer && (kh.caption || kh.userLine || kh.typed || kh.error)" class="kh-bubble" aria-live="polite" data-keephard-caption>
-      <button class="kh-x" type="button" aria-label="Close Bloub" @click="close">×</button>
-      <p v-if="kh.caption" class="kh-line">{{ kh.caption }}</p>
-      <p v-if="kh.userLine" class="kh-me">You: {{ kh.userLine }}</p>
-      <p v-if="kh.error" class="kh-err">{{ kh.error }}</p>
-      <form v-if="kh.typed" class="kh-typed" @submit.prevent="submit">
-        <input v-model="typed" placeholder="Go on, type it." @keydown="stop" @keyup="stop" @keypress="stop">
-        <button type="submit">Send</button>
-      </form>
-    </section>
     <section v-if="kh.offer" class="kh-offer modal-surface" role="region" aria-label="A cheaper pair" data-keephard-offer>
       <div class="kh-title">{{ kh.offer.title }}</div>
       <div class="kh-retail">{{ kh.offer.retailer }}<template v-if="kh.offer.colour"> · {{ kh.offer.colour }}</template></div>
@@ -39,12 +29,7 @@ const stop = (e: Event) => e.stopPropagation();
 
 <style>
 .kh-layer{position:fixed;inset:0;pointer-events:none;z-index:2147483603}
-.kh-layer button,.kh-layer input,.kh-layer .kh-bubble,.kh-layer .kh-offer{pointer-events:auto}
-.kh-bubble{position:fixed;right:24px;bottom:236px;max-width:300px;background:#fff;color:#24271f;border-radius:16px 16px 4px 16px;box-shadow:0 10px 40px #151a2338;padding:12px 30px 12px 14px;font-size:14px;line-height:1.4;animation:kh-pop .3s cubic-bezier(.34,1.56,.64,1)}
-.kh-x{position:absolute;top:2px;right:6px;border:0;background:none;color:#888b7c;font-size:18px;padding:2px 4px}
-.kh-line{font-weight:600}.kh-me{margin-top:4px;color:#5d6150;font-size:12px}.kh-err{margin-top:4px;color:#9b1c1c;font-size:12px}
-.kh-typed{display:flex;gap:6px;margin-top:8px}.kh-typed input{flex:1;min-width:0;padding:6px 8px;border:1px solid #dedfd5;border-radius:8px}
-.kh-typed button{border:0;background:#f0b429;border-radius:8px;padding:6px 10px;font-weight:600}
+.kh-layer button,.kh-layer input,.kh-layer .kh-offer{pointer-events:auto}
 .kh-offer{position:fixed;right:24px;bottom:236px;width:300px;border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:4px;border-top:4px solid #f0b429;animation:kh-pop .3s cubic-bezier(.34,1.56,.64,1)}
 .kh-title{font-weight:700;font-size:14px;line-height:1.3}.kh-retail{color:#5d6150;font-size:12px}.kh-price{font-size:24px;font-weight:800}
 .kh-badge{align-self:flex-start;background:#23874c;color:#fff;border-radius:999px;padding:3px 10px;font-weight:700;font-size:12px}

@@ -24,14 +24,14 @@ type Events = {
   error: (e: unknown) => void;
 };
 
-const MAX_ROUNDS = 1; // one-round flow: every verdict is final
+const MAX_ROUNDS = 2; // two rounds: a first reject lets the user insist once; the second verdict is final
 const OPENING = 'Why do you need these shoes?';
 
 export interface Interrogation {
   on: Emitter<Events>['on'];
   off: Emitter<Events>['off'];
   start(): Promise<void>;
-  say(text: string, state?: AvatarState): Promise<void>;
+  say(text: string, state?: AvatarState, priority?: SpeechPriority): Promise<void>;
   submitTyped(text: string): Promise<Verdict | undefined>;
   stop(): void;
   /** resolves once the live agent finished its post-verdict line (mode listening, or it never started speaking); typed say() also awaited. */
@@ -39,10 +39,41 @@ export interface Interrogation {
   /** close the live (mic) session without stopping say(). */
   endVoice(): void;
   readonly fallbackMode: boolean;
+  /** the last verdict was final (accept, or the last round): the session is winding down */
+  readonly finished: boolean;
+}
+
+/** tail of the page-wide serial speech queue */
+let CLIP_ID = 0;
+export type SpeechPriority = 'verdict' | 'beat' | 'savings' | 'nudge';
+const PRIO: Record<SpeechPriority, number> = { verdict: 0, beat: 1, savings: 2, nudge: 3 };
+const CLIP_SAFETY_MS = 12000;
+/** Page-wide speech queue: one clip at a time, FIFO within a priority, higher priority jumps ahead of waiting clips
+ *  (never interrupts the one playing). The next clip starts only after the previous one ended. */
+const Q = { jobs: [] as { prio: number; seq: number; run: () => Promise<void> }[], busy: false, seq: 0 };
+function pump() {
+  if (Q.busy || !Q.jobs.length) return;
+  Q.jobs.sort((a, b) => a.prio - b.prio || a.seq - b.seq);
+  const j = Q.jobs.shift()!;
+  Q.busy = true;
+  j.run().catch(() => {}).finally(() => { Q.busy = false; pump(); });
+}
+function enqueue(prio: number, run: () => Promise<void>): Promise<void> {
+  return new Promise<void>((res) => {
+    Q.jobs.push({ prio, seq: ++Q.seq, run: async () => { try { await run(); } finally { res(); } } });
+    pump();
+  });
+}
+async function withRetry<T>(fn: () => Promise<T>, bad: (v: T) => boolean): Promise<T> {
+  try { const v = await fn(); if (!bad(v)) return v; } catch { /* retry once */ }
+  await new Promise((r) => setTimeout(r, 1200));
+  return fn();
 }
 
 class Session extends Emitter<Events> implements Interrogation {
   fallbackMode = false;
+  get finished() { return this.done; }
+  private lastAgentEnd = 0;
   private conv?: Conversation;
   private round = 0;
   private done = false;
@@ -51,7 +82,11 @@ class Session extends Emitter<Events> implements Interrogation {
   private audio?: HTMLAudioElement;
   private url?: string;
   private agentSpeaking = false;
-  private saying = false;
+  private pending = 0;
+  private gate?: Promise<void>;
+  private gateRes?: () => void;
+  private gateSpoke?: () => void;
+  private cancelClip?: () => void;
 
   constructor(private o: InterrogationOptions) { super(); }
 
@@ -116,9 +151,10 @@ class Session extends Emitter<Events> implements Interrogation {
   }
 
   private onMode(mode: string) {
-    if (mode === 'speaking') { this.agentSpeaking = true; this.setState('talking'); }
+    if (mode === 'speaking') { this.agentSpeaking = true; this.gateSpoke?.(); this.setState('talking'); }
     else if (mode === 'listening') {
-      this.agentSpeaking = false;
+      this.agentSpeaking = false; this.lastAgentEnd = Date.now();
+      this.gateRes?.(); // (only releases once the agent has spoken: see armGate)
       if (this.done) { // final line finished: close the session, keep the verdict mood
         this.setState(this.lastVerdict === 'accept' ? 'happy' : 'disappointed');
         return;
@@ -133,10 +169,25 @@ class Session extends Emitter<Events> implements Interrogation {
       const t0 = Date.now();
       let seen = false;
       const iv = setInterval(() => {
-        const active = this.agentSpeaking || this.saying;
+        const active = this.agentSpeaking || this.pending > 0 || Q.busy || Q.jobs.length > 0;
         if (active) seen = true;
-        if ((!active && seen) || (!active && Date.now() - t0 > 800) || Date.now() - t0 > maxMs || this.stopped) { clearInterval(iv); resolve(); }
+        if ((!active && seen) || (!active && !this.gate && Date.now() - t0 > 2500) || Date.now() - t0 > maxMs || this.stopped) { clearInterval(iv); resolve(); }
       }, 100);
+    });
+  }
+
+  /** After a verdict the live agent calls `decide` FIRST and speaks AFTER. Hold every queued clip until the agent's own line
+   *  has started (max 2.5s) and finished (max 8s total), so our clips can never talk over it. */
+  private armGate() {
+    if (this.fallbackMode || !this.conv || this.gate) return;
+    let spoke = this.agentSpeaking;
+    let t1: ReturnType<typeof setTimeout>, t2: ReturnType<typeof setTimeout>;
+    this.gate = new Promise<void>((res) => {
+      const fin = () => { clearTimeout(t1); clearTimeout(t2); this.gate = undefined; this.gateRes = undefined; this.gateSpoke = undefined; res(); };
+      this.gateSpoke = () => { spoke = true; clearTimeout(t1); };
+      this.gateRes = () => { if (spoke) fin(); };
+      t1 = setTimeout(() => { if (!spoke) fin(); }, 2500);
+      t2 = setTimeout(fin, 8000);
     });
   }
 
@@ -151,6 +202,7 @@ class Session extends Emitter<Events> implements Interrogation {
       spokenLine: p.spokenLine,
     };
     this.lastVerdict = v.verdict;
+    this.armGate();
     const final = v.verdict === 'accept' || this.round >= MAX_ROUNDS;
     if (final) this.done = true;
     this.setState(v.verdict === 'accept' ? 'happy' : 'disappointed');
@@ -175,49 +227,79 @@ class Session extends Emitter<Events> implements Interrogation {
       this.emit('verdict', v); // emit first: UI reacts before audio arrives
       this.emit('caption', v.spokenLine, 'avatar');
       const mood: AvatarState = v.verdict === 'accept' ? 'happy' : 'disappointed';
-      void this.say(v.spokenLine, mood);
+      void this.say(v.spokenLine, mood, 'verdict');
       return v;
     } catch (e) {
       this.emit('error', e);
     }
   }
 
-  /** TTS via backend; emits talking, then `after` (default idle) when audio ends. */
-  async say(text: string, after: AvatarState = 'idle'): Promise<void> {
-    this.setState('talking');
-    this.saying = true;
-    this.audio?.pause();
-    try {
-      const r = await this.post('/api/voice/speak', { text });
-      if (!r.ok) throw new Error(`speak ${r.status}`);
-      const blob = await r.blob();
-      if (this.stopped) return;
-      this.revoke();
-      this.url = URL.createObjectURL(blob);
-      const a = (this.audio = new Audio(this.url));
-      await new Promise<void>((res) => {
-        a.onended = () => res();
-        a.onerror = () => {
-          const err = new Error('audio element error: ' + (a.error?.message || a.error?.code || 'unknown'));
-          console.warn('[keephard] say()', err);
-          this.emit('error', err);
-          res();
-        };
-        a.play().catch(async (err) => {
-          console.warn('[keephard] audio.play() rejected, trying WebAudio:', err);
-          try { await this.playWebAudio(blob); }
-          catch (e2) {
-            console.warn('[keephard] WebAudio fallback failed:', e2);
-            this.emit('error', new Error(`audio blocked (${err?.name || err}); click the page / Start button first`));
-          }
-          res();
-        });
+  /** TTS via backend. ONE serial queue (shared by every session on the page): clips never overlap each other,
+   *  and a clip also waits until the live agent has stopped speaking. The audio is fetched immediately
+   *  (prefetch) but only played when it is its turn. Resolves when this clip has finished (or was dropped).
+   *  Emits talking when the clip starts and `after` (default idle) when it ends and nothing else is queued. */
+  say(text: string, after: AvatarState = 'idle', priority: SpeechPriority = 'beat'): Promise<void> {
+    // nudges are droppable: skip if anything else is queued, playing, or the live agent is talking
+    if (priority === 'nudge' && (Q.busy || Q.jobs.length || this.agentSpeaking || this.gate || Date.now() - this.lastAgentEnd < 2000)) return Promise.resolve(); // dropped, never queued
+    this.pending++;
+    const blobP: Promise<Blob | undefined> = withRetry(() => this.post('/api/voice/speak', { text }), (r) => r.status >= 500)
+      .then((r) => { if (!r.ok) throw new Error(`speak ${r.status}`); return r.blob(); })
+      .catch((e) => { this.emit('error', e); return undefined; });
+    return enqueue(PRIO[priority], async () => {
+      try {
+        if (priority === 'nudge' && Q.jobs.length) return; // something real arrived while we waited
+        const blob = await blobP;
+        if (!blob || this.stopped) return;
+        await this.waitAgentQuiet();
+        if (this.stopped) return;
+        this.setState('talking');
+        await this.playBlob(blob);
+      } catch (e) { this.emit('error', e); }
+      finally {
+        this.pending--;
+        if (this.pending === 0 && !Q.jobs.length) { try { this.conv?.setVolume({ volume: 1 }); } catch { /* ignore */ } }
+        if (!this.stopped && this.pending === 0) this.setState(after);
+      }
+    });
+  }
+
+  /** never start a clip on top of the live agent's own voice */
+  private async waitAgentQuiet(maxMs = 15000) {
+    const t0 = Date.now();
+    if (this.gate) await this.gate;
+    while (this.agentSpeaking && !this.stopped && Date.now() - t0 < maxMs) await new Promise((r) => setTimeout(r, 80));
+  }
+
+  private async playBlob(blob: Blob) {
+    this.revoke();
+    try { this.conv?.setVolume({ volume: 0 }); } catch { /* ignore */ } // a late agent response is muted, never on top of our clip
+    this.url = URL.createObjectURL(blob);
+    const a = (this.audio = new Audio(this.url));
+    const id = ++CLIP_ID;
+    a.addEventListener('play', () => console.debug('[kh-audio] play ' + id + ' ' + Math.round(blob.size)));
+    a.addEventListener('ended', () => console.debug('[kh-audio] ended ' + id));
+    await new Promise<void>((res) => {
+      const safety = setTimeout(() => { console.warn('[keephard] clip safety timeout'); try { a.pause(); } catch { /* ignore */ } res(); }, CLIP_SAFETY_MS);
+      this.cancelClip = () => { clearTimeout(safety); res(); };
+      a.addEventListener('ended', () => clearTimeout(safety));
+      a.onended = () => res();
+      a.onerror = () => {
+        const err = new Error('audio element error: ' + (a.error?.message || a.error?.code || 'unknown'));
+        console.warn('[keephard] say()', err);
+        this.emit('error', err);
+        res();
+      };
+      a.play().catch(async (err) => {
+        console.warn('[keephard] audio.play() rejected, trying WebAudio:', err);
+        try { await this.playWebAudio(blob); }
+        catch (e2) {
+          console.warn('[keephard] WebAudio fallback failed:', e2);
+          this.emit('error', new Error(`audio blocked (${err?.name || err}); click the page / Start button first`));
+        }
+        res();
       });
-    } catch (e) {
-      this.emit('error', e);
-    }
-    this.saying = false;
-    this.setState(after);
+    });
+    this.cancelClip = undefined;
   }
 
   private async playWebAudio(blob: Blob) {
@@ -241,6 +323,7 @@ class Session extends Emitter<Events> implements Interrogation {
     this.stopped = true;
     this.conv?.endSession().catch(() => {});
     this.audio?.pause();
+    this.cancelClip?.();
     this.revoke();
     this.setState('idle');
   }

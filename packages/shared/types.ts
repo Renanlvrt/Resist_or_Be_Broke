@@ -38,3 +38,6 @@ export interface SearchResult {
 
 // ---- Dashboard (owner: frontend) ----
 export interface SavingsEntry { at: string; label: string; amount: number }
+
+/** A saving goal appended by the "Add a new goal" voice interview (profile.goals[]). */
+export interface Goal { id: string; label: string; amount: number; by: string; emoji?: string; createdAt: string }

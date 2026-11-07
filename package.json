@@ -1,0 +1,8 @@
+{
+  "name": "keephard-demo",
+  "private": true,
+  "scripts": {
+    "demo:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-demo.ps1",
+    "demo:check": "node scripts/demo-check.mjs"
+  }
+}

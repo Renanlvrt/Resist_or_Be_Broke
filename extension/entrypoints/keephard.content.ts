@@ -6,6 +6,7 @@ export default defineContentScript({
   runAt: 'document_start',
   async main() {
     const { initBridge } = await import('../../packages/voice/bridge/src/bridge');
-    initBridge({ integrated: true });
+    const { KEEPHARD_CONFIG } = await import('../keephard/config');
+    initBridge({ integrated: true, dashboardBeat: KEEPHARD_CONFIG.dashboardBeat });
   },
 });

@@ -1,8 +1,14 @@
 <script setup lang="ts">
 // This recap is intentionally a fixed visual demo, independent of mock finance state.
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, onMounted } from 'vue';
 import { kh } from '../keephard/store'; // KEEPHARD
 import GoalImpact from '../keephard/GoalImpact.vue'; // KEEPHARD
+import AddGoalButton from '../keephard/AddGoalButton.vue'; // KEEPHARD
+import { goalsState, goalDot, loadGoals, watchGoals } from '../keephard/goalsStore'; // KEEPHARD
+let unwatchGoals: (() => void) | undefined; // KEEPHARD
+onMounted(() => { void loadGoals(); unwatchGoals = watchGoals(); }); // KEEPHARD
+onBeforeUnmount(() => unwatchGoals?.()); // KEEPHARD
+const shownGoals = computed(() => goalsState.goals.slice(-3)); // KEEPHARD
 const emit = defineEmits<{ close: [] }>();
 // KEEPHARD: savings recorded by the voice flow (storage keephard.savings) on top of the fixed demo £131.
 const base = computed(() => Math.round((131 + kh.extra) * 100) / 100);
@@ -42,7 +48,7 @@ const bought = [
         <section class="savings-projection" aria-labelledby="projection-title">
           <div class="projection-heading"><h2 id="projection-title">Future savings projection</h2><span>£{{ aprilTotal }} by April</span></div>
           <p>Illustrative monthly growth</p>
-          <svg viewBox="0 0 360 112" role="img" aria-label="Hardcoded exponential savings projection from £131 in November to £587 in April">
+          <svg viewBox="0 0 360 112" preserveAspectRatio="xMinYMid meet" role="img" aria-label="Hardcoded exponential savings projection from £131 in November to £587 in April">
             <path d="M12 16H348 M12 48H348 M12 80H348" class="projection-grid" />
             <path :d="projectionPath" class="projection-curve" />
             <g v-for="(month,index) in projectionMonths" :key="month">
@@ -51,11 +57,7 @@ const bought = [
             </g>
           </svg>
         </section>
-        <GoalImpact />
-        <section v-if="!kh.impact" class="recap-goals" aria-labelledby="goals-title">
-          <h2 id="goals-title">Your financial goals</h2>
-          <ul><li>Save for sports equipment</li><li>Spend less on takeaways</li><li>Build an emergency savings fund</li><li>No alcohol this month</li></ul>
-        </section>
+        <GoalImpact :saved="base" />
       </div>
       <div class="receipt-position">
         <article class="paper-receipt" aria-labelledby="receipt-title" data-receipt>
@@ -69,6 +71,11 @@ const bought = [
           <dl class="receipt-total"><div><dt>SAVED</dt><dd>£{{ fmt(base) }}</dd></div></dl>
         </article>
       </div>
+      <section class="recap-goals" aria-labelledby="goals-title">
+          <h2 id="goals-title">Your goals</h2>
+          <ul><li>Save for sports equipment</li><li>Spend less on takeaways</li><li>Build an emergency savings fund</li><li>No alcohol this month</li><li v-for="g in shownGoals" :key="g.id" class="goal-chip" data-goal-chip><i class="gdot" :class="goalDot(base, g)"></i>{{ g.emoji ? g.emoji + ' ' : '' }}{{ g.label.slice(0, 20) }} · £{{ fmt(g.amount) }}</li></ul>
+          <AddGoalButton />
+        </section>
     </div>
   </section>
 </template>

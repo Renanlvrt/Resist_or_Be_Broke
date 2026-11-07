@@ -15,6 +15,10 @@ export const kh = reactive({
   offer: null as null | { title: string; retailer: string; colour?: string; price: number; savings: number },
   countdown: 0,
   impact: null as ImpactView | null,
+  verdictSeen: false,     // a verdict (decide) arrived in this voice session: the ONLY thing that opens the impact dashboard
+  impactTone: 'reject' as 'reject' | 'caution',
+  transcript: [] as { id: number; who: 'avatar' | 'user'; text: string }[],
+  lingering: false, fading: false,
   recovery: null as null | { amount: number; savedAfter: number },
   extra: 0,               // total saved by KeepHard (storage keephard.savings)
   entries: [] as SavingsEntry[],

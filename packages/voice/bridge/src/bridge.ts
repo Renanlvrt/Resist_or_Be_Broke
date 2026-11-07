@@ -5,7 +5,7 @@ import { detectProduct, isProductUrl } from './detect';
 
 /** All side effects live in initBridge so the module can be imported at build time (WXT) without touching window/chrome.
  *  integrated=true: no own panel; a headless EventUi emits `keephard:ui` events for the host UI (Pocket/Bloub). */
-export function initBridge(opts: { integrated?: boolean } = {}): void {
+export function initBridge(opts: { integrated?: boolean; dashboardBeat?: boolean } = {}): void {
 const integrated = !!opts.integrated;
 
 const BACKEND = 'http://localhost:8787';
@@ -91,9 +91,13 @@ const currentReason = (): string | undefined => {
 };
 
 async function runSearch(product: any, demo?: boolean): Promise<any> {
-  const res = await proxyFetch(BACKEND + '/api/search' + (demo ? '?demo=1' : ''), {
+  const call = () => proxyFetch(BACKEND + '/api/search' + (demo ? '?demo=1' : ''), {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ product, reasonText: currentReason() }),
   });
+  // one retry after ~1.2s on a network failure or 5xx (backend restarting); the backend reuses its prefetch for the same product
+  let res: Response | undefined;
+  try { res = await call(); } catch { /* network: retry */ }
+  if (!res || res.status >= 500) { await new Promise((r) => setTimeout(r, 1200)); res = await call(); }
   if (!res.ok) throw new Error('search HTTP ' + res.status);
   return res.json();
 }
@@ -114,16 +118,16 @@ async function recordSavings(amount: number, label: string) {
   return { entry, total: next.savedByKeepHard };
 }
 
-async function sayLine(text: string, state: string) {
-  if (session) return session.say(text, state as any);
+async function sayLine(text: string, state: string, prio: any = 'beat') {
+  if (session) return session.say(text, state as any, prio);
   const s = createInterrogation({ profile: demoProfile as any, product: {} as any, backendUrl: BACKEND, demo: lastDemo, fetch: proxyFetch });
   s.on('state', (st) => emit('state', { state: st }));
   s.on('error', (err) => { console.warn('[keephard]', err); ui?.error(String((err as any)?.message || err)); });
-  return s.say(text, state as any);
+  return s.say(text, state as any, prio);
 }
 
 // Search only (no speech, no persistence). Emits keephard:searchresult {result} or {error}.
-const SEARCH_TIMEOUT_MS = 8000;
+const SEARCH_TIMEOUT_MS = 9000;
 const NOT_FOUND_LINES = ['Looked everywhere. Not a penny cheaper, I am afraid.', 'Checked the lot. Nowt cheaper. Sorry, pal.', 'Had a proper look. That is as low as it goes.', 'Annoying, but this is the best price going.'];
 let nfIdx = Math.floor(Math.random() * NOT_FOUND_LINES.length);
 let closeT: any;
@@ -135,13 +139,13 @@ function closeAll(why: string) {
 }
 
 /** not found / search failed: one dry line, neutral avatar, then auto-close */
-async function endNotFound(why: string) {
+async function endNotFound(why: string, final = true) {
   offerGen++;
   const line = NOT_FOUND_LINES[nfIdx++ % NOT_FOUND_LINES.length]!;
   clearTimeout(closeT);
   closeT = setTimeout(() => closeAll('notfound hard cap'), integrated ? 40000 : 14000);
+  if (!final) { emit('caption', { text: line, who: 'avatar' }); ui?.caption(line, 'avatar'); return; } // round 1 reject: stay open, the user may insist
   try { if (!integrated) stop(); ui?.hideOffer(); ui?.peek(true); ui?.state('idle'); emit('state', { state: 'idle' }); emit('caption', { text: line, who: 'avatar' }); ui?.caption(line, 'avatar'); ui?.scheduleHide(60000); } catch { /* ignore */ }
-  try { await Promise.race([sayMuted(line, 'idle'), new Promise((r) => setTimeout(r, 5000))]); } catch (e) { console.warn('[keephard] say failed', e); }
   try { ui?.state('idle'); } catch { /* ignore */ }
   if (integrated) { await armGrace(); } // mic stays open ~8s; a spoken reply gets one closing line
   clearTimeout(closeT);
@@ -191,21 +195,38 @@ function safeHttp(u: any): string | undefined {
 
 // Offer beat: (wait for the agent) -> search -> say spokenLine -> countdown -> same-tab redirect.
 // Saving is recorded only at the moment of redirect (countdown end or "Buy it cheaper"), never on offer / cancel.
-async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogation, verdict?: string) {
+async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogation, verdict?: string, final = true) {
   if (chainBusy) return;
   chainBusy = true;
   let shown = false;
-  const wd = setTimeout(() => { if (!shown) closeAll('verdict watchdog'); }, 15000);
+  let beatOn = opts.dashboardBeat === true;
+  try { const o = await chrome.storage.local.get('keephard.dashboardBeat'); if (typeof o?.['keephard.dashboardBeat'] === 'boolean') beatOn = o['keephard.dashboardBeat']; } catch { /* default */ }
+  const impact = integrated && beatOn && verdictSeen && (verdict === 'reject' || verdict === 'accept');
+  const tone = verdict === 'accept' ? 'caution' : 'reject';
+  const wd = setTimeout(() => { if (!shown) closeAll('verdict watchdog'); }, impact ? 45000 : 20000);
   try {
-    if (s) { try { await Promise.race([s.agentDone(), new Promise((r) => setTimeout(r, 6000))]); if (!integrated) s.endVoice(); } catch { /* ignore */ } } // one speaking voice at a time; mic off after the verdict
-    const result = await doSearch(product, demo);
-    if (!result || !result.found || !result.alternative) { shown = true; clearTimeout(wd); await endNotFound(result ? 'not found' : 'search failed'); return; }
-    shown = true; clearTimeout(wd);
+    const searchP = doSearch(product, demo); // starts now (cold live search can take 3-7s); overlaps the verdict line + dashboard beat
+    if (s) { try { await Promise.race([s.agentDone(), new Promise((r) => setTimeout(r, 9000))]); if (!integrated) s.endVoice(); } catch { /* ignore */ } } // the queue also waits for the live agent
     const gen = ++offerGen;
+    // Strictly serial speech: every clip goes through the voice layer's single priority queue (never two voices at once).
+    // The live agent is the ONLY voice: dashboard / savings / not-found lines are TEXT in the transcript, never audio.
+    const speak = async (text: string, _state?: string, _prio?: string, _capMs?: number) => {
+      emit('caption', { text, who: 'avatar' }); ui?.caption(text, 'avatar');
+    };
+    if (impact) { // dashboard goal-impact beat plays while the search may still be pending
+      const ipx = Number(product?.price) > 0 ? Number(product.price) : DEMO_PRODUCT.price; // never an empty panel
+      ui?.impact(ipx, tone); emit('impact', { price: ipx, tone });
+      emit('state', { state: tone === 'caution' ? 'happy' : 'disappointed' });
+      await speak(tone === 'caution' ? CAUTION_LINE : IMPACT_LINE, tone === 'caution' ? 'happy' : 'disappointed', 'beat', 25000);
+      if (gen !== offerGen) return;
+    }
+    const result = await searchP; // waits for the rest of the ~9s search budget
+    if (gen !== offerGen) return;
+    if (!result || !result.found || !result.alternative) { shown = true; clearTimeout(wd); await endNotFound(result ? 'not found' : 'search failed', final); return; }
+    shown = true; clearTimeout(wd);
     const alt = result.alternative;
     const url = safeHttp(alt.url);
     let settled = false;
-    const impact = integrated && verdict === 'reject';
     const go = async () => {
       if (settled || gen !== offerGen) return;
       settled = true; offerGen++; stop();
@@ -221,20 +242,17 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
       window.location.assign(url);
     };
     const cancel = () => { if (settled) return; settled = true; offerGen++; if (!(integrated && closingHandled)) stop(); ui?.hideOffer(); emit('offerdismissed', {}); };
-    if (impact) { // reject: show what these shoes do to the goal, say the cached line, THEN the card
-      ui?.impact(Number(product?.price) || 0); emit('impact', { price: Number(product?.price) || 0 });
-      emit('state', { state: 'disappointed' });
-      try { await Promise.race([sayMuted(IMPACT_LINE, 'disappointed'), new Promise((r) => setTimeout(r, 9000))]); }
-      catch (e) { console.warn('[keephard] say failed', e); }
-      if (gen !== offerGen) return;
+    if (impact) { // beat line already played: now the savings line, THEN the card + countdown
+      if (result.spokenLine) { await speak(String(result.spokenLine), 'happy', 'savings', 25000); if (gen !== offerGen) return; }
       emit('state', { state: 'happy' });
+      ui?.offer(result, (opened) => { if (opened) void go(); else cancel(); });
+      emit('offer', { result, verdict });
+    } else {
+      ui?.offer(result, (opened) => { if (opened) void go(); else cancel(); });
+      emit('offer', { result, verdict });
+      if (result.spokenLine) await speak(String(result.spokenLine), 'happy', 'savings', 25000); else emit('state', { state: 'happy' });
     }
-    ui?.offer(result, (opened) => { if (opened) void go(); else cancel(); });
-    emit('offer', { result, verdict });
-    if (impact) { /* line already spoken */ } else if (result.spokenLine) {
-      try { await Promise.race([sayMuted(result.spokenLine, 'happy'), new Promise((r) => setTimeout(r, 8000))]); }
-      catch (e) { console.warn('[keephard] say failed', e); }
-    } else emit('state', { state: 'happy' });
+    if (!final) return; // first reject: card + dashboard shown, session and mic stay open for the user's reply
     if (autoRedirect && url && !settled && gen === offerGen) { ui?.countdown(3, () => void go(), cancel); if (integrated) void armGrace(); }
     else if (!settled) { if (integrated) void armGrace(); else stop(); } // card only: standalone closes the voice; integrated keeps a grace window
   } catch (e) { console.warn('[keephard] offer beat failed', e); if (!shown) { shown = true; clearTimeout(wd); await endNotFound('error'); } }
@@ -254,10 +272,10 @@ function armGrace(): Promise<void> {
   });
 }
 /** our own TTS (cached backend voice) with the live mic muted so it cannot hear itself */
-async function sayMuted(text: string, state: string) {
+async function sayMuted(text: string, state: string, prio: any = 'beat') {
   const s = session; const conv = (s as any)?.conv;
   try { conv?.setMicMuted?.(true); } catch { /* ignore */ }
-  try { return await sayLine(text, state); }
+  try { return await sayLine(text, state, prio); }
   finally { try { if (session === s) conv?.setMicMuted?.(false); } catch { /* ignore */ } }
 }
 
@@ -297,11 +315,11 @@ function startSession(d: any, force = false): Promise<void> {
     armed = true;
     idleT = setTimeout(async () => {
       if (session !== s || userSpoke) return;
-      if (step >= 2) { quietEnd('no user speech'); return; }
+      if (step >= 1) { quietEnd('no user speech'); return; } // at most ONE nudge per session
       const line = pickNudge();
       const conv = (s as any).conv;
       try { conv?.setMicMuted?.(true); } catch { /* ignore */ }
-      if (line) { emit('caption', { text: line, who: 'avatar' }); ui?.caption(line, 'avatar'); try { await s.say(line, 'listening'); } catch { /* ignore */ } }
+      if (line) { emit('caption', { text: line, who: 'avatar' }); ui?.caption(line, 'avatar'); try { await s.say(line, 'listening', 'nudge'); } catch { /* ignore */ } }
       try { conv?.setMicMuted?.(false); } catch { /* ignore */ }
       if (session === s && !userSpoke) armIdle(step + 1);
     }, step >= 2 ? 8000 : 6000);
@@ -312,7 +330,7 @@ function startSession(d: any, force = false): Promise<void> {
     if (session !== s) return;
     if (who === 'user') { userLines.push(text); userSpoke = true; clearTimeout(idleT); } else if (!gotQ) { gotQ = true; }
     emit('caption', { text, who }); ui?.caption(text, who);
-    if (who === 'user' && integrated && verdictSeen && !closingHandled) { // spoke after the verdict: pause auto-redirect, let the agent say ONE closing line
+    if (who === 'user' && integrated && verdictSeen && !closingHandled && !chainBusy && s.finished) { // spoke after the verdict: pause auto-redirect, let the agent say ONE closing line
       closingHandled = true; clearTimeout(graceT);
       (ui as any)?.pauseCountdown?.();
       const done = graceDone; graceDone = undefined;
@@ -321,7 +339,7 @@ function startSession(d: any, force = false): Promise<void> {
   });
   s.on('verdict', (verdict) => {
     if (session !== s) return; verdictSeen = true; clearTimeout(idleT); clearTimeout(capT); if (verdict?.userReasonSummary) reasonSummary = String(verdict.userReasonSummary); emit('verdict', { verdict }); ui?.scheduleHide(60000); if (!integrated) ui?.caption(`Verdict: ${verdict.verdict} (${verdict.reasonCategory})`, 'avatar');
-    if (autoChain) void offerBeat(d.product, d.demo, s, verdict.verdict);
+    if (autoChain) void offerBeat(d.product, d.demo, s, verdict.verdict, s.finished);
   });
   s.on('fallback', (reason) => { if (session !== s) return; emit('fallback', { reason }); ui?.fallback(reason); });
   s.on('error', (err) => { console.warn('[keephard]', err); ui?.error(String((err as any)?.message || err)); });
@@ -583,7 +601,7 @@ class Panel {
     this.peekEl.classList.toggle('open', on);
     if (on) { this.peekEl.style.transition = ''; this.peekEl.style.opacity = ''; }
     if (on !== was) emit('peek', { on }); if (!on) { this.pcap.textContent = ''; this.pme.textContent = ''; this.ptyped.classList.remove('open'); } }
-  impact(_price: number) { /* standalone panel has no dashboard */ }
+  impact(_price: number, _tone?: string) { /* standalone panel has no dashboard */ }
   hideTest() { (this.root.querySelector('.go') as HTMLElement).style.display = 'none'; (this.root.querySelector('.skip') as HTMLElement).style.display = 'none'; }
   tap(on: boolean) { this.tapEl.classList.toggle('open', on); }
   typedOpen() { this.ptyped.classList.add('open'); }
@@ -619,9 +637,11 @@ class Panel {
 }
 
 const IMPACT_LINE = 'Buy these and your flight home slips. Here is a cheaper pair.';
+const CAUTION_LINE = 'Careful, though. Look at what this does to your goal.';
 
 /** Headless UI: same method surface as Panel, but everything goes out as `keephard:ui` events
  *  ({kind, ...}) and comes back as `keephard:offerchoice {buy}` / `keephard:stay`. */
+const NETWORKISH = /fetch|network|http|timed out|timeout|speak \d|session \d|judge \d|disconnect|no response|not allowed|audio|WebSocket|ElevenLabs|connect/i;
 class EventUi {
   private offerDone?: (opened: boolean) => void;
   private cdCancel?: () => void;
@@ -648,7 +668,7 @@ class EventUi {
   }
   offer(r: any, done: (opened: boolean) => void) { this.offerDone = done; this.ui('offer', { result: r }); }
   pauseCountdown() { clearInterval(this.cdT); this.cdCancel = undefined; this.ui('countdown', { left: 0 }); }
-  impact(price: number) { this.ui('impact', { price, goal: (demoProfile as any).goal }); }
+  impact(price: number, tone = 'reject') { this.ui('impact', { price, tone, goal: (demoProfile as any).goal }); }
   recovered(price: number, amount: number) { this.ui('recovered', { price, amount }); }
   toast(t: string) { this.ui('toast', { text: t }); }
   peek(on: boolean) {
@@ -663,8 +683,9 @@ class EventUi {
   dismiss() { this.hideOffer(); this.peek(false); }
   state(s: string) { this.ui('state', { state: s }); }
   caption(text: string, who: 'avatar' | 'user') { this.ui('caption', { text, who }); }
-  error(msg: string) { this.ui('error', { text: msg }); }
-  fallback(reason: string) { this.ui('error', { text: 'Voice fallback: ' + reason }); this.ui('typedopen'); }
+  /** network / proxy / audio failures are logged only, never shown to the user */
+  error(msg: string) { if (NETWORKISH.test(msg) && !/microphone|mic /i.test(msg)) { console.warn('[keephard] hidden error:', msg); return; } this.ui('error', { text: msg }); }
+  fallback(reason: string) { console.warn('[keephard] voice fallback:', reason); this.ui('typedopen'); }
 }
 
 function mountUi() {

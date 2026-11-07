@@ -15,6 +15,7 @@ const ProfileZ = z.object({
   categories: z.object({ sport: Cat, fashion: Cat, eating_out: Cat, groceries: Cat, tech: Cat, other: Cat }),
   goal: z.object({ label: z.string(), amount: z.number(), saved: z.number(), by: z.string() }),
   savedByKeepHard: z.number(),
+  goals: z.array(z.object({ id: z.string(), label: z.string(), amount: z.number(), by: z.string(), emoji: z.string().optional(), createdAt: z.string() })).optional(),
   tone: z.literal('supportive'),
 });
 
@@ -23,8 +24,10 @@ const demo = () => JSON.parse(readFileSync(path.join(ROOT, 'packages/shared/demo
 function saved() {
   try { return ProfileZ.parse(JSON.parse(readFileSync(PROFILE_PATH, 'utf8'))); } catch { return null; }
 }
-function persist(p: unknown) {
-  try { mkdirSync(path.dirname(PROFILE_PATH), { recursive: true }); writeFileSync(PROFILE_PATH, JSON.stringify(p, null, 2)); } catch { /* best effort */ }
+function persist(p: any) {
+  try {
+    // keep goals appended via /api/goals when a new interview rewrites the profile
+    if (p && !p.goals) { const old = saved(); if (old?.goals) p = { ...p, goals: old.goals }; } mkdirSync(path.dirname(PROFILE_PATH), { recursive: true }); writeFileSync(PROFILE_PATH, JSON.stringify(p, null, 2)); } catch { /* best effort */ }
 }
 
 const Save = z.object({
@@ -91,6 +94,9 @@ router.post('/', async (req, res) => {
   }
 });
 
-profileRouter.get('/', (_req, res) => res.json(saved() ?? demo()));
+profileRouter.get('/', (_req, res) => {
+  const p: any = saved() ?? demo();
+  res.json(p.goals ? p : { ...p, goals: [{ id: 'goal-0', ...p.goal, createdAt: '2026-11-07T00:00:00.000Z' }] });
+});
 
 export default router;

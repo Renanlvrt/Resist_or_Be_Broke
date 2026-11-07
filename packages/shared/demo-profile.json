@@ -9,7 +9,7 @@
     "tech": { "limit": 0, "rule": "No tech this month" },
     "other": { "limit": 0, "rule": "Ask me why first" }
   },
-  "goal": { "label": "Flight home", "amount": 150, "saved": 40, "by": "2026-12-15" },
+  "goal": { "label": "Summer holiday", "amount": 400, "saved": 131, "by": "2027-06-30" },
   "savedByKeepHard": 0,
   "tone": "supportive"
 }
