@@ -17,3 +17,13 @@
 - Extension: getUserMedia in a content script prompts per host origin (amazon.co.uk). Preferred: render the avatar/voice in an extension-origin iframe with `allow="microphone"` so the grant is once for the extension; otherwise the user clicks Allow once on amazon.co.uk and it persists.
 
 - [ ] (A) backend/scripts/create-agent.ts sets decide to expects_response:false, but packages/voice returns a string from the tool and docs/ELEVENLABS_AGENT_MANUAL.md uses blocking. Please change it to expects_response:true before running Route A. B owns that file.
+
+## A -> frontend
+Build the voice extension: `node scripts/make-extension.mjs` (copies your bundle to `chrome-mv3-voice/` and adds the bridge; your bundle is untouched). Event contract: `docs/CONTRACTS.md` > "Extension bridge events". Add this to your own code:
+1. When a Nike/shoe product is detected on amazon.co.uk, after the `peek` state: `window.dispatchEvent(new CustomEvent('keephard:start', {detail: {product}}))` (`product` per `packages/shared/types.ts`; profile is optional, defaults to demo profile). Dispatch only once per page.
+2. Map `keephard:state` (`detail.state`: peek|idle|listening|talking|happy|disappointed) to the Bloub animation states.
+3. Show `keephard:caption` (`detail.text`, `detail.who`) as the speech bubble / transcript.
+4. On `keephard:fallback`, show a text input and send `window.dispatchEvent(new CustomEvent('keephard:typed', {detail:{text}}))`.
+5. On `keephard:verdict` with `verdict.verdict === 'accept'`, call `/api/search` (backend :8787, via your own fetch or request it through the background) and then `window.dispatchEvent(new CustomEvent('keephard:say', {detail:{text: result.spokenLine, state:'happy'}}))`; add `result.savings` to `savedByKeepHard` and the dashboard.
+6. Call `keephard:stop` when the user dismisses Bloub or leaves the product.
+Mic: open the extension's Options page once and click "Allow microphone" (note: the content script runs in the amazon.co.uk origin, so Chrome may also ask once there; if denied, `keephard:fallback` fires and typed mode works).

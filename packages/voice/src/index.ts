@@ -11,6 +11,8 @@ export interface InterrogationOptions {
   demo?: boolean;
   /** ms to wait for the WebSocket before falling back to typed mode (default 4000) */
   connectTimeoutMs?: number;
+  /** injectable fetch (e.g. proxied through an extension background worker); defaults to global fetch */
+  fetch?: typeof fetch;
 }
 
 type Events = {
@@ -48,7 +50,7 @@ class Session extends Emitter<Events> implements Interrogation {
   constructor(private o: InterrogationOptions) { super(); }
 
   private post(path: string, body: unknown) {
-    return fetch(`${this.o.backendUrl}${path}`, {
+    return (this.o.fetch ?? fetch)(`${this.o.backendUrl}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
