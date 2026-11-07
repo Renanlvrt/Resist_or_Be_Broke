@@ -5,7 +5,7 @@
 //   2. Live (not ?demo=1): Firecrawl searches named UK retailers for the same model, Claude reads the
 //      pages into offers, we keep only same-model, cheaper, UK offers and return the cheapest.
 //      Results are memoised (30 min) and `?prefetch=1` starts a search early so the real call is instant.
-//   3. Fallback: demo-search-cached.json with a Google Shopping link for this product.
+//   3. Otherwise found:false. We never invent a price or saving.
 // Privacy: only the product's title/brand/price leave the device. Never the profile.
 import { Router } from 'express';
 import { z } from 'zod';
@@ -139,7 +139,6 @@ export function acceptLine(line: unknown, savings: number, price: number): line 
 // ---------- demo data + fallback ----------
 
 const shared = (f: string) => JSON.parse(readFileSync(path.join(ROOT, 'packages/shared', f), 'utf8'));
-export const cachedResult = (): SearchResult => shared('demo-search-cached.json');
 const asinOf = (u?: string) => /\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i.exec(u ?? '')?.[1]?.toUpperCase();
 
 // ---- Curated demo alternatives (B's logic from main, unchanged): ASIN / aliases / keyword match, colour-aware ----
@@ -168,6 +167,8 @@ function findDemo(demoAlts: any, product: any): any {
 export function curatedFor(product: any, reasonText?: string): (SearchResult & { matchedColour?: string }) | null {
   const hit = findDemo(shared('demo-alternatives.json'), product ?? {});
   if (!hit) return null;
+  // B: never offer a curated alternative that isn't cheaper than the price on the page.
+  if (Number(product?.price) > 0 && Number(hit.alternative?.price) >= Number(product.price)) return { found: false, savings: 0, spokenLine: '', cached: true };
   const colour = colourIn(reasonText);
   const v = colour && hit.variants?.[colour];
   if (v) return { found: true, alternative: withColour(v.alternative, cap(colour)), matchedColour: cap(v.alternative.colour), savings: v.savings, spokenLine: v.spokenLine, cached: true };
@@ -176,21 +177,8 @@ export function curatedFor(product: any, reasonText?: string): (SearchResult & {
     spokenLine: mismatch ? mismatchLine(hit) : hit.spokenLine, cached: true };
 }
 
-/** Last resort (unchanged from main): the cached result with a Google Shopping link for this product. */
-export function fallbackResult(product: Partial<Product>): SearchResult {
-  const base = cachedResult();
-  const q = encodeURIComponent(`${product.brand ?? ''} ${product.title ?? ''}`.trim());
-  return {
-    ...base,
-    alternative: {
-      ...base.alternative!,
-      title: product.title ?? base.alternative!.title,
-      brand: product.brand ?? base.alternative!.brand,
-      url: `https://www.google.com/search?tbm=shop&q=${q}`,
-      sameModel: false,
-    },
-  };
-}
+/** No verified alternative (B, main): never invent a price or saving. */
+export const notFound = (): SearchResult => ({ found: false, savings: 0, spokenLine: '', cached: false });
 
 // ---------- live path ----------
 
@@ -396,7 +384,7 @@ async function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
 
 // ---------- route ----------
 
-// Lenient: the extension may send a product before the price has rendered. Without title+price we skip live search.
+// Lenient: the extension may send a product before the price has rendered. Without title+price we skip live search (-> not found).
 const ProductZ = z.object({
   title: z.string().min(1).max(300),
   brand: z.string().max(100).default(''),
@@ -437,8 +425,8 @@ router.post('/', async (req, res) => {
     }
     reason = r ? r.reason : 'live still running (kept for next time)';
   }
-  const fb = fallbackResult(product);
-  log(fb, `fallback, ${reason}`);
-  res.json(fb);
+  const none = notFound();
+  log(none, `not found, ${reason}`);
+  res.json(none);
 });
 export default router;
