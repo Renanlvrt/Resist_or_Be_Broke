@@ -1,0 +1,20 @@
+.rob-recap { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 16px; padding: 16px 24px; }
+.rob-recap-intro { display: flex; flex-direction: column; gap: 2px; }
+.rob-recap-intro h3 { font-size: 18px; }
+.rob-recap-big { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 760px) { .rob-recap-big { grid-template-columns: 1fr; } }
+.rob-big { border: 1px solid var(--rob-line); border-top: 4px solid var(--rob-line); border-radius: var(--rob-radius); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rob-big-n { font-size: 34px; font-weight: 700; line-height: 1.1; color: var(--rob-ink); font-variant-numeric: tabular-nums; }
+.rob-big-l { font-size: 13px; color: var(--rob-muted); }
+.rob-big-kept { border-top-color: var(--rob-brand); }
+.rob-big-redirected { border-top-color: var(--rob-green); }
+.rob-big-overruled { border-top-color: var(--rob-muted); }
+.rob-recap-rules ul { list-style: none; padding: 0; display: grid; }
+.rob-recap-rules li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px; padding: 10px 0; border-top: 1px solid var(--rob-line); }
+.rob-recap-rules li:first-child { border-top: 0; }
+.rob-recap-said { font-weight: 600; font-size: 15px; min-width: 0; }
+.rob-recap-tag { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--rob-brand); background: var(--rob-soft); padding: 2px 8px; border-radius: 99px; margin-right: 4px; vertical-align: 1px; }
+.rob-recap-counts { font-size: 13px; color: var(--rob-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rob-recap-counts b { color: var(--rob-ink); }
+.rob-recap-close { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; }
+.rob-recap-close p:first-child { font-weight: 600; color: var(--rob-brand); }
