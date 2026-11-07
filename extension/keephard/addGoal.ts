@@ -1,4 +1,6 @@
 import { addGoal, BACKEND, proxyFetch, type GoalItem } from './goalsStore';
+// @ts-ignore @elevenlabs/client is installed under packages/voice only; static import so it is bundled into the content script (a dynamic import becomes a chunk the Amazon page cannot load)
+import { Conversation } from '../../packages/voice/node_modules/@elevenlabs/client';
 
 export type GoalPhase = 'idle' | 'connecting' | 'listening' | 'talking' | 'done' | 'typed';
 export interface GoalSessionHandlers {
@@ -23,14 +25,12 @@ export async function startGoalSession(h: GoalSessionHandlers, opts: { connectTi
   const stop = () => { stopped = true; conv?.endSession().catch(() => {}); h.onPhase('idle'); };
   h.onPhase('connecting');
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const failed = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('connect timeout')), opts.connectTimeoutMs ?? 6000); });
+  const failed = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('connect timeout')), opts.connectTimeoutMs ?? 12000); });
   const connect = (async () => {
     const r = await f(`${BACKEND}/api/goals/session`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     if (!r.ok) throw new Error('session ' + r.status);
     const { signedUrl } = await r.json();
-    // @ts-ignore @elevenlabs/client is installed under packages/voice only
-    const { Conversation } = await import('../../packages/voice/node_modules/@elevenlabs/client') as any;
-    return Conversation.startSession({
+    return (Conversation as any).startSession({
       signedUrl,
       connectionType: 'websocket',
       clientTools: {
