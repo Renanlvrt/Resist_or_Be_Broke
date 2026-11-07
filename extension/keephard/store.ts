@@ -26,8 +26,12 @@ export const kh = reactive({
 
 export function applySavings(v: unknown) {
   const o = (v ?? {}) as { entries?: unknown; savedByKeepHard?: unknown };
-  kh.entries = Array.isArray(o.entries) ? (o.entries as SavingsEntry[]).filter(e => e && Number.isFinite(Number(e.amount))) : [];
-  kh.extra = Number(o.savedByKeepHard) || 0;
+  const valid = Array.isArray(o.entries) ? (o.entries as SavingsEntry[]).filter(e => e && Number.isFinite(Number(e.amount))) : [];
+  // One row per product: repeat runs on the same product replace the earlier row instead of stacking.
+  const byLabel = new Map<string, SavingsEntry>();
+  for (const e of valid) { byLabel.delete(e.label); byLabel.set(e.label, e); }
+  kh.entries = [...byLabel.values()];
+  kh.extra = Math.round(kh.entries.reduce((s, e) => s + Number(e.amount), 0) * 100) / 100;
 }
 export async function loadSavings() {
   try {
