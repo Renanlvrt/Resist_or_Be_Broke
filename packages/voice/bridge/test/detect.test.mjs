@@ -70,4 +70,28 @@ assert.equal(detectProduct(doc(''), URL_NIKE, { demo: true }).reason, 'no title 
 r = detectProduct(doc('<span id="productTitle">Revolution 7 Trainers</span><a id="bylineInfo">Brand: Nike</a><span class="a-price"><span class="a-offscreen">£45.00</span></span>'), URL_NIKE);
 assert.equal(r.product.price, 45);
 
+// ---- four demo pages: real-world-like markup ----
+const pageHtml = (o) => `<span id="productTitle"> ${o.title} </span><a id="bylineInfo">${o.byline}</a>
+<img id="landingImage" src="https://m.media-amazon.com/images/I/x.jpg">
+<div id="corePrice_feature_div"><span class="a-price"><span class="a-offscreen">${o.price}</span></span></div>
+<div id="variation_color_name"><label class="a-form-label">Colour: <span class="selection">${o.colour}</span></label></div>
+<table id="productDetails_detailBullets_sections1"><tr><th> ASIN </th><td>&#8206;${o.tableAsin}</td></tr></table>`;
+const pages = [
+  { u: 'https://www.amazon.co.uk/Brooks-Glycerin-Running-Trainers-Mens/dp/B0DXXBROOK/ref=x', title: 'Brooks Glycerin 22 Running Trainers Mens Road Shoes', byline: 'Brand: Brooks', price: '£184.00', colour: 'Burnt Sienna Ebony Orange', tableAsin: 'B0DXXBROO2', brand: 'Brooks', p: 184, asin: 'B0DXXBROOK' },
+  { u: 'https://www.amazon.co.uk/FitVille-Wide-Running-Shoes/dp/B0CFITVILE', title: 'FitVille Mens Wide Running Shoes Road Trainers', byline: 'Visit the FitVille Store', price: '£49.99', colour: 'Black', tableAsin: 'B0CFITVILE', brand: 'FitVille', p: 49.99, asin: 'B0CFITVILE' },
+  { u: 'https://www.amazon.co.uk/PUMA-Viz-Runner/dp/B07PUMAVIZ', title: 'PUMA Mens Viz Runner Wide Cross-Trainer', byline: 'Visit the PUMA Store', price: '£59.67', colour: 'Red', tableAsin: 'B07PUMAVIZ', brand: 'PUMA', p: 59.67, asin: 'B07PUMAVIZ' },
+  { u: 'https://www.amazon.co.uk/Nike-Revolution-8/dp/B0NIKEREV8', title: 'Nike Mens Revolution 8 Road Running Shoes', byline: 'Visit the Nike Store', price: '£54.95', colour: 'Black/White', tableAsin: 'B0NIKEREV8', brand: 'Nike', p: 54.95, asin: 'B0NIKEREV8' },
+];
+for (const g of pages) {
+  const x = detectProduct(doc(pageHtml(g)), g.u).product;
+  assert.ok(x, g.title);
+  assert.equal(x.brand, g.brand); assert.equal(x.price, g.p); assert.equal(x.asin, g.asin); assert.equal(x.colour, g.colour);
+  assert.equal(x.title, g.title);
+  assert.deepEqual(x.altAsins, g.tableAsin === g.asin ? [] : [g.tableAsin]);
+  assert.match(x.image, /media-amazon/);
+}
+// bullet-list ASIN + no colour
+const b = detectProduct(doc('<span id="productTitle">Brooks Ghost Running Shoes</span><a id="bylineInfo">Brand: Brooks</a><span class="a-price"><span class="a-offscreen">£100</span></span><div id="detailBullets_feature_div"><ul><li><span>ASIN &#8207; : &#8206; B0BULLET11</span></li></ul></div>'), 'https://www.amazon.co.uk/x/dp/B0BULLET00').product;
+assert.deepEqual(b.altAsins, ['B0BULLET11']); assert.equal(b.colour, undefined);
+
 console.log('detect.test.mjs: all assertions passed');

@@ -17,6 +17,11 @@ const lines = [
   "I'm having trouble connecting. You can type your reason below.",
   'Hello!!!!', 'Hellooo? Anyone there?', 'Earth to Sam! Are you still with me?', 'Hey! Still there?', 'Come on, talk to me!',
 ];
+const alts = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/shared/demo-alternatives.json'), 'utf8'));
+for (const h of Object.values<any>(alts)) {
+  lines.push(h.spokenLine, `Not in that colour, but closest I could find. Same ${h.brand}, ${Math.round(h.savings)} pounds cheaper.`);
+  for (const v of Object.values<any>(h.variants ?? {})) lines.push(v.spokenLine);
+}
 let ok = 0;
 for (const t of [...new Set(lines)]) {
   if (readCached(t)) { ok++; continue; }

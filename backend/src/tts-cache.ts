@@ -5,6 +5,7 @@ import { ROOT } from './env.js';
 
 export const TTS_DIR = path.join(ROOT, 'backend', 'cache', 'tts');
 export const MODEL_ID = 'eleven_flash_v2_5';
+export const VOICE_SETTINGS = { stability: 0.45, similarity_boost: 0.75, style: 0.1, use_speaker_boost: true };
 export const voiceId = () => process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
 
 export function cachePath(text: string, voice = voiceId()): string {
@@ -22,7 +23,7 @@ export async function synthesize(text: string): Promise<Buffer> {
   const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId()}/stream`, {
     method: 'POST',
     headers: { 'xi-api-key': key, 'content-type': 'application/json', accept: 'audio/mpeg' },
-    body: JSON.stringify({ text, model_id: MODEL_ID }),
+    body: JSON.stringify({ text, model_id: MODEL_ID, voice_settings: VOICE_SETTINGS }),
   });
   if (!r.ok) throw new Error(`elevenlabs ${r.status}`);
   const buf = Buffer.from(await r.arrayBuffer());

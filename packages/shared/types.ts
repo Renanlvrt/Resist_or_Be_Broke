@@ -27,7 +27,7 @@ export interface Verdict {
 }
 
 // ---- Search (owner: third teammate) ----
-export interface SearchRequest { product: Product }
+export interface SearchRequest { product: Product; reasonText?: string }
 export interface SearchResult {
   found: boolean;
   alternative?: { title: string; brand: string; price: number; url: string; retailer: string; sameModel: boolean };

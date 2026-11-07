@@ -39,3 +39,8 @@ chrome-mv3-voice/
 backend.log
 
 backend/data/
+
+ElevenLabs_*.mp3
+ElevenLabs_*.mpeg
+ElevenLabs_*.mp3.mpeg
+*.mpeg

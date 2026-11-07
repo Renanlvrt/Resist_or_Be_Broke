@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { askClaude, extractJson } from '../claude.js';
 import fs from 'node:fs';
-import { readCached, cachePath, TTS_DIR } from '../tts-cache.js';
+import { readCached, cachePath, TTS_DIR, VOICE_SETTINGS, MODEL_ID } from '../tts-cache.js';
 
 const router = Router();
 const CATS = ['sport', 'fashion', 'eating_out', 'groceries', 'tech', 'other'] as const;
@@ -53,7 +53,7 @@ router.post('/speak', async (req, res) => {
     const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}/stream`, {
       method: 'POST',
       headers: { 'xi-api-key': key, 'content-type': 'application/json', accept: 'audio/mpeg' },
-      body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
+      body: JSON.stringify({ text, model_id: MODEL_ID, voice_settings: VOICE_SETTINGS }),
     });
     if (!r.ok || !r.body) return res.status(502).json({ error: `elevenlabs ${r.status}`, detail: await r.text() });
     const buf = Buffer.from(await r.arrayBuffer());

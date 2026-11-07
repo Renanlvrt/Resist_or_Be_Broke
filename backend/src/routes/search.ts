@@ -1,6 +1,7 @@
 // POST /api/search  (owner: search teammate)
 // SearchRequest -> SearchResult. Order:
-//   1. Known demo ASINs (packages/shared/demo-alternatives.json): verified alternative, instant.
+//   1. Known demo products (packages/shared/demo-alternatives.json: ASIN, alias or keywords; colour-aware
+//      via `reasonText`): verified alternative, instant.
 //   2. Live (not ?demo=1): Firecrawl searches named UK retailers for the same model, Claude reads the
 //      pages into offers, we keep only same-model, cheaper, UK offers and return the cheapest.
 //      Results are memoised (30 min) and `?prefetch=1` starts a search early so the real call is instant.
@@ -141,11 +142,38 @@ const shared = (f: string) => JSON.parse(readFileSync(path.join(ROOT, 'packages/
 export const cachedResult = (): SearchResult => shared('demo-search-cached.json');
 const asinOf = (u?: string) => /\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i.exec(u ?? '')?.[1]?.toUpperCase();
 
-/** Verified alternative for a known demo product (by Amazon ASIN), else null. */
-export function curatedFor(url?: string): SearchResult | null {
-  const asin = asinOf(url);
-  const hit = asin ? shared('demo-alternatives.json')[asin] : undefined;
-  return hit ? { found: true, alternative: hit.alternative, savings: hit.savings, spokenLine: hit.spokenLine, cached: true } : null;
+// ---- Curated demo alternatives (B's logic from main, unchanged): ASIN / aliases / keyword match, colour-aware ----
+const COLOURS = ['red', 'orange', 'black', 'white', 'blue', 'grey', 'gray', 'green', 'pink', 'yellow', 'purple'];
+const colourIn = (t?: string) => {
+  const words = (t ?? '').toLowerCase().split(/[^a-z]+/);
+  const c = COLOURS.find((w) => words.includes(w));
+  return c === 'gray' ? 'grey' : c;
+};
+const mismatchLine = (hit: any) =>
+  `Not in that colour, but closest I could find. Same ${hit.brand}, ${Math.round(hit.savings)} pounds cheaper.`;
+
+const cap = (c?: string) => (c ? c[0]!.toUpperCase() + c.slice(1) : undefined);
+const withColour = (alt: any, matched?: string) => ({ ...alt, colour: cap(alt.colour) ?? matched, matchedColour: matched });
+
+function findDemo(demoAlts: any, product: any): any {
+  const ids = [asinOf(product.url), product.asin, ...(Array.isArray(product.altAsins) ? product.altAsins : [])]
+    .filter((x) => typeof x === 'string').map((x) => x.toUpperCase());
+  for (const [k, v] of Object.entries<any>(demoAlts)) if (ids.some((i) => i === k || v.aliases?.includes(i))) return v;
+  const hay = `${product.brand ?? ''} ${product.title ?? ''}`.toLowerCase();
+  for (const v of Object.values<any>(demoAlts)) if (v.match?.every((m: string) => hay.includes(m))) return v;
+  return undefined;
+}
+
+/** Verified alternative for a known demo product (ASIN, alias or keywords), colour-aware via the user's reason. */
+export function curatedFor(product: any, reasonText?: string): (SearchResult & { matchedColour?: string }) | null {
+  const hit = findDemo(shared('demo-alternatives.json'), product ?? {});
+  if (!hit) return null;
+  const colour = colourIn(reasonText);
+  const v = colour && hit.variants?.[colour];
+  if (v) return { found: true, alternative: withColour(v.alternative, cap(colour)), matchedColour: cap(v.alternative.colour), savings: v.savings, spokenLine: v.spokenLine, cached: true };
+  const mismatch = colour && hit.alternative.colour && hit.alternative.colour !== colour;
+  return { found: true, alternative: withColour(hit.alternative, cap(hit.alternative.colour)), matchedColour: cap(hit.alternative.colour), savings: hit.savings,
+    spokenLine: mismatch ? mismatchLine(hit) : hit.spokenLine, cached: true };
 }
 
 /** Last resort (unchanged from main): the cached result with a Google Shopping link for this product. */
@@ -386,7 +414,7 @@ router.post('/', async (req, res) => {
   const log = (r: SearchResult, how: string) =>
     console.log(`[search] "${product.title ?? '?'}" £${product.price ?? '?'} -> ${r.alternative ? `£${r.alternative.price} ${r.alternative.retailer}` : 'none'} (${how}, ${Date.now() - t0}ms)`);
 
-  const curated = curatedFor(product.url);
+  const curated = curatedFor(product, req.body?.reasonText);
   if (curated) {
     if (req.query.prefetch === '1') return res.status(202).json({ prefetching: false });
     log(curated, 'demo ASIN');

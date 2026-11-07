@@ -94,10 +94,13 @@ test('route: demo ASIN -> verified alternative instantly (demo or live)', async 
     const nike = { ...demo, title: "Nike Revolution Men's Running Shoes", price: 64.99, url: 'https://www.amazon.co.uk/dp/B0DPHTGD5C?th=1' };
     for (const q of ['', '?demo=1']) {
       const r: any = await (await post(base + q, { product: nike })).json();
-      assert.equal(r.alternative.retailer, 'SportsShoes');
       assert.equal(r.cached, true);
-      assert.deepEqual(r, curatedFor(nike.url));
+      assert.ok(r.alternative.price < nike.price);
+      assert.deepEqual(r, curatedFor(nike));
     }
+    // the spoken reason reaches B's colour-aware lookup
+    const red: any = await (await post(base, { product: nike, reasonText: 'I want the red ones' })).json();
+    assert.deepEqual(red, curatedFor(nike, 'I want the red ones'));
   });
 });
 
