@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Product – Mock Shop</title>
+  <link rel="stylesheet" href="./shop.css" />
+</head>
+<body>
+  <header><a href="./index.html">mockshop<span>.co.uk</span></a><span class="tag">DEMO FALLBACK</span><span class="basket">Basket: <b id="basket-count">0</b></span></header>
+  <main>
+    <!-- Same IDs/classes as an amazon.co.uk product page so one content-script adapter reads both. -->
+    <div class="product">
+      <img id="landingImage" alt="" />
+      <div>
+        <h1 id="productTitle"></h1>
+        <div id="bylineInfo"></div>
+        <div id="corePrice_feature_div"><span class="a-price"><span class="a-offscreen"></span><span aria-hidden="true" class="a-price-display"></span></span></div>
+        <ul id="feature-bullets"></ul>
+      </div>
+      <form class="buybox" action="./checkout.html" method="get">
+        <input type="hidden" name="p" />
+        <label>Quantity: <select id="quantity" name="quantity"><option>1</option><option>2</option><option>3</option></select></label>
+        <input type="button" class="btn" id="add-to-cart-button" name="submit.add-to-cart" value="Add to basket" />
+        <input type="submit" class="btn" id="buy-now-button" name="submit.buy-now" value="Buy Now" />
+        <span class="added" id="added">✓ Added to basket</span>
+      </form>
+    </div>
+  </main>
+  <script type="module">
+    import { PRODUCTS } from './products.js';
+    const id = new URLSearchParams(location.search).get('p') || 'nike';
+    const p = PRODUCTS[id] || PRODUCTS.nike;
+    document.title = `${p.title} – Mock Shop`;
+    document.getElementById('landingImage').src = p.img;
+    document.getElementById('productTitle').textContent = p.title;
+    document.getElementById('bylineInfo').textContent = `Brand: ${p.brand}`;
+    document.querySelector('.a-offscreen').textContent = `£${p.price.toFixed(2)}`;
+    document.querySelector('.a-price-display').textContent = `£${p.price.toFixed(2)}`;
+    document.getElementById('feature-bullets').innerHTML = p.bullets.map((b) => `<li>${b}</li>`).join('');
+    document.querySelector('input[name=p]').value = id;
+    const count = document.getElementById('basket-count');
+    count.textContent = sessionStorage.getItem('basket') || '0';
+    document.getElementById('add-to-cart-button').addEventListener('click', () => {
+      const n = Number(sessionStorage.getItem('basket') || 0) + Number(document.getElementById('quantity').value);
+      sessionStorage.setItem('basket', String(n));
+      count.textContent = String(n);
+      document.getElementById('added').style.display = 'block';
+    });
+  </script>
+</body>
+</html>

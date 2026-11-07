@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Resist or Be Broke",
+  "version": "0.1.0",
+  "description": "Says back your own budget, goals and rules at checkout. Never blocks: you always decide.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://www.amazon.co.uk/*", "http://localhost:3000/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://www.amazon.co.uk/*", "http://localhost:5174/*", "http://127.0.0.1:5174/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": { "default_title": "Resist or Be Broke" }
+}

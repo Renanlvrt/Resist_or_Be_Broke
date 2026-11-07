@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Checkout – Mock Shop</title>
+  <link rel="stylesheet" href="./shop.css" />
+</head>
+<body>
+  <header><a href="./index.html">mockshop<span>.co.uk</span></a><span class="tag">DEMO FALLBACK</span></header>
+  <main>
+    <h1>Checkout</h1>
+    <p id="summary"></p>
+    <p>This is a mock checkout. Nothing is charged.</p>
+    <p><a href="./index.html">← Back to the shop</a></p>
+  </main>
+  <script type="module">
+    import { PRODUCTS } from './products.js';
+    const q = new URLSearchParams(location.search);
+    const p = PRODUCTS[q.get('p')] || PRODUCTS.nike;
+    const n = Number(q.get('quantity') || 1);
+    document.getElementById('summary').textContent = `${n} × ${p.title} — £${(p.price * n).toFixed(2)}`;
+  </script>
+</body>
+</html>

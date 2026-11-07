@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mock Shop</title>
+  <link rel="stylesheet" href="./shop.css" />
+</head>
+<body>
+  <header><a href="./index.html">mockshop<span>.co.uk</span></a><span class="tag">DEMO FALLBACK</span></header>
+  <main>
+    <p class="notice">A local stand-in for Amazon, used if the real page changes during the demo. Same buttons, same flow.</p>
+    <div class="grid" id="grid"></div>
+  </main>
+  <script type="module">
+    import { PRODUCTS } from './products.js';
+    document.getElementById('grid').innerHTML = Object.entries(PRODUCTS)
+      .map(([id, p]) => `<a class="card" href="./product.html?p=${id}"><img src="${p.img}" alt="" /><div>${p.title}</div><b>£${p.price.toFixed(2)}</b></a>`)
+      .join('');
+  </script>
+</body>
+</html>
