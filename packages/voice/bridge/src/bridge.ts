@@ -33,9 +33,31 @@ function bytes(b64: string): Uint8Array {
   return u;
 }
 
+// Pre-warmed signed session (same body as the Session will POST), consumed once.
+let warm: { body: string; at: number; p: Promise<any> } | undefined;
+function prewarmSession(product: any) {
+  try {
+    const body = JSON.stringify({ profile: demoProfile, product });
+    if (warm && warm.body === body) return;
+    const p = chrome.runtime.sendMessage({ type: 'keephard:fetch', url: BACKEND + '/api/voice/session', method: 'POST', headers: { 'content-type': 'application/json' }, body });
+    p.catch(() => {});
+    warm = { body, at: Date.now(), p };
+  } catch { /* ignore */ }
+}
+let micGranted = false;
+function prewarmEnv() {
+  try { (navigator.permissions as any).query({ name: 'microphone' }).then((r: any) => { micGranted = r.state === 'granted'; r.onchange = () => { micGranted = r.state === 'granted'; }; }).catch(() => {}); } catch { /* ignore */ }
+  try { chrome.runtime.sendMessage({ type: 'keephard:fetch', url: BACKEND + '/health', method: 'GET' }).catch(() => {}); } catch { /* ignore */ }
+}
+
 const proxyFetch: typeof fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
-  const res: any = await chrome.runtime.sendMessage({
+  let res: any;
+  if (url.endsWith('/api/voice/session') && warm && typeof init?.body === 'string' && init.body === warm.body && Date.now() - warm.at < 90000) {
+    const w = warm; warm = undefined;
+    try { const r = await w.p; if (r && !r.error && r.status >= 200 && r.status < 300) res = r; } catch { /* fall through */ }
+  }
+  if (!res) res = await chrome.runtime.sendMessage({
     type: 'keephard:fetch',
     url,
     method: init?.method,
@@ -102,6 +124,7 @@ async function doSearch(product: any, demo?: boolean) {
   }
 }
 
+const NUDGES = ['Hello!!!!', 'Hellooo? Anyone there?', 'Earth to {n}! Are you still with me?', 'Hey! Still there?', 'Come on, talk to me!'];
 let autoRedirect = true;
 function mascotPresent(): boolean {
   try { return !!document.querySelector('[data-keephard-mascot],[id*="bloub" i],[class*="bloub" i]'); } catch { return false; }
@@ -185,13 +208,31 @@ function startSession(d: any, force = false): Promise<void> {
     fetch: proxyFetch,
   });
   session = s;
-  let userSpoke = false, gotQ = false;
-  const armIdle = () => { clearTimeout(idleT); if (!userSpoke) idleT = setTimeout(() => { if (session === s && !userSpoke) quietEnd('no user speech'); }, 12000); };
+  let userSpoke = false, gotQ = false, armed = false;
+  const nm = String((d.profile || demoProfile as any)?.name || '');
+  const pool = NUDGES.filter((l) => !l.includes('{n}') || nm === 'Sam').map((l) => l.replace('{n}', nm));
+  const pickNudge = () => pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+  // silence ladder: nudge at ~6s, nudge ~6s later, close quietly ~8s after that. Mic muted while a nudge plays.
+  const armIdle = (step = 0) => {
+    clearTimeout(idleT);
+    if (userSpoke) return;
+    armed = true;
+    idleT = setTimeout(async () => {
+      if (session !== s || userSpoke) return;
+      if (step >= 2) { quietEnd('no user speech'); return; }
+      const line = pickNudge();
+      const conv = (s as any).conv;
+      try { conv?.setMicMuted?.(true); } catch { /* ignore */ }
+      if (line) { emit('caption', { text: line, who: 'avatar' }); ui?.caption(line, 'avatar'); try { await s.say(line, 'listening'); } catch { /* ignore */ } }
+      try { conv?.setMicMuted?.(false); } catch { /* ignore */ }
+      if (session === s && !userSpoke) armIdle(step + 1);
+    }, step >= 2 ? 8000 : 6000);
+  };
   capT = setTimeout(() => { if (session === s && !chainBusy) quietEnd('session cap'); }, 60000);
-  s.on('state', (state) => { if (session !== s) return; emit('state', { state }); ui?.state(state); if (state === 'listening' && gotQ) armIdle(); });
+  s.on('state', (state) => { if (session !== s) return; emit('state', { state }); ui?.state(state); if (state === 'listening' && gotQ && !armed) armIdle(); });
   s.on('caption', (text, who) => {
     if (session !== s) return;
-    if (who === 'user') { userSpoke = true; clearTimeout(idleT); } else if (!gotQ) { gotQ = true; armIdle(); }
+    if (who === 'user') { userSpoke = true; clearTimeout(idleT); } else if (!gotQ) { gotQ = true; }
     emit('caption', { text, who }); ui?.caption(text, who);
   });
   s.on('verdict', (verdict) => {
@@ -527,8 +568,7 @@ async function beginSession(product: any) {
   const short = String(product?.title || 'those').split(/[,(-]/)[0].trim().slice(0, 50);
   // probe the mic so a denial / dismissed prompt is visible; typed input is the fallback
   try {
-    const st = await navigator.mediaDevices.getUserMedia({ audio: true });
-    st.getTracks().forEach((t) => t.stop());
+    if (!micGranted) { const st = await navigator.mediaDevices.getUserMedia({ audio: true }); st.getTracks().forEach((t) => t.stop()); }
   } catch (e) {
     console.warn('[keephard] mic unavailable:', e);
     p?.typedOpen();
@@ -560,6 +600,7 @@ function armGesture() {
 async function autoStart(product: any) {
   if (session) return; // an interrogation is already running (manual start)
   emit('detected', { product });
+  prewarmSession(product);
   ensureUi();
   if (await tryUnlockAudio()) { await beginSession(product); return; }
   // autoplay blocked: friendly bubble, start on the first real gesture
@@ -579,19 +620,19 @@ function check() {
     curKey = key; titleSeenAt = 0;
   }
   if (!enabled || !key || !isProductUrl(location.href) || triggered.has(key) || wasDone(prodKey({ url: location.href }))) return;
-  let r = detectProduct(document, location.href, { demo: false });
+  let r = detectProduct(document, location.href, { demo: false, fast: true });
   if (!r.product && r.reason === 'no price yet' && demoMode) {
     titleSeenAt = titleSeenAt || Date.now();
-    const wait = 2500 - (Date.now() - titleSeenAt); // give the real price a chance to render first
+    const wait = 400 - (Date.now() - titleSeenAt); // give the real price a chance to render first
     if (wait > 0) { scheduleCheck(wait + 50); return; }
-    r = detectProduct(document, location.href, { demo: true });
+    r = detectProduct(document, location.href, { demo: true, fast: true });
   }
   if (!r.product) return;
   triggered.add(key);
   void autoStart(r.product);
 }
 
-function scheduleCheck(ms = 800) { clearTimeout(checkT); checkT = setTimeout(check, ms); }
+function scheduleCheck(ms = 120) { clearTimeout(checkT); checkT = setTimeout(check, ms); }
 // observer variant: do not reset a pending timer, otherwise a busy page starves the debounce forever
 function scheduleCheckThrottled() { if (!checkT) scheduleCheck(); }
 
@@ -641,8 +682,9 @@ if (window.top === window) {
 }
 
 if (window.top === window) {
+  if (isProductUrl(location.href)) prewarmEnv();
   void loadSettings().then(() => {
-    scheduleCheck();
+    check();
     new MutationObserver(() => scheduleCheckThrottled()).observe(document.documentElement, { childList: true, subtree: true });
     window.addEventListener('popstate', () => scheduleCheck());
     let lastHref = location.href;

@@ -1,0 +1,18 @@
+{
+  "B0DPHTGD5C": {
+    "title": "Nike Revolution Men's Running Shoes, Black/White", "brand": "Nike", "amazonPrice": 64.99,
+    "alternative": { "title": "Nike Revolution 8 Men's Running Shoes", "brand": "Nike", "price": 49.99,
+      "url": "https://www.sportsshoes.com/product/nik24538/nike-revolution-8-men's-running-shoes---ho25",
+      "retailer": "SportsShoes", "sameModel": true },
+    "savings": 15.00,
+    "spokenLine": "Same Nikes, fifteen pounds cheaper at SportsShoes. That is your flight home."
+  },
+  "B08KKVTB76": {
+    "title": "PUMA Men's Axelion/Viz Runner WideCross-Trainer", "brand": "PUMA", "amazonPrice": 59.67,
+    "alternative": { "title": "PUMA Viz Runner Men's Trainers", "brand": "PUMA", "price": 44.99,
+      "url": "https://www.ebay.co.uk/sch/i.html?_nkw=PUMA+Viz+Runner+mens+trainers+new&LH_BIN=1",
+      "retailer": "eBay UK", "sameModel": false },
+    "savings": 14.68,
+    "spokenLine": "Same PUMAs, about fifteen pounds cheaper on eBay. That is a flight home saved."
+  }
+}

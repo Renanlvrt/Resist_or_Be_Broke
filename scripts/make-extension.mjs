@@ -25,7 +25,7 @@ m.permissions = [...new Set([...(m.permissions || []), 'storage'])];
 m.host_permissions = ['http://localhost:8787/*', 'wss://api.elevenlabs.io/*', 'https://api.elevenlabs.io/*'];
 m.background = { service_worker: 'background.js' };
 const matches = m.content_scripts?.[0]?.matches || [];
-m.content_scripts = [...(m.content_scripts || []), { matches, js: ['bridge.js'], run_at: 'document_idle' }];
+m.content_scripts = [...(m.content_scripts || []), { matches, js: ['bridge.js'], run_at: 'document_start' }];
 m.options_page = 'options.html'; // Extension options > "Allow microphone"
 fs.writeFileSync(mpath, JSON.stringify(m, null, 2));
 JSON.parse(fs.readFileSync(mpath, 'utf8')); // validity check

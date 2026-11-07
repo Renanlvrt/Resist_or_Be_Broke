@@ -15,6 +15,7 @@ const lines = [
   'Fresh month, fresh start. Every pound you keep gets you closer to your flight home.',
   "I couldn't hear you. Type your reason instead.",
   "I'm having trouble connecting. You can type your reason below.",
+  'Hello!!!!', 'Hellooo? Anyone there?', 'Earth to Sam! Are you still with me?', 'Hey! Still there?', 'Come on, talk to me!',
 ];
 let ok = 0;
 for (const t of [...new Set(lines)]) {

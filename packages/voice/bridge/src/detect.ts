@@ -57,9 +57,13 @@ function brandOf(title: string, byline: string): string {
   return title.split(/\s+/)[0] || 'Unknown';
 }
 
-export function detectProduct(doc: Document, href: string, opts: { demo?: boolean } = {}): DetectResult {
+export function detectProduct(doc: Document, href: string, opts: { demo?: boolean; fast?: boolean } = {}): DetectResult {
   if (!isProductUrl(href)) return { reason: 'not a product page' };
-  const title = (doc.querySelector('#productTitle')?.textContent || '').replace(/\s+/g, ' ').trim();
+  let title = (doc.querySelector('#productTitle')?.textContent || '').replace(/\s+/g, ' ').trim();
+  if (!title && opts.fast) { // earlier signal: <title> "Amazon.co.uk: <product>: Fashion"
+    const parts = (doc.title || '').split(':').map((x) => x.trim()).filter(Boolean);
+    if (parts.length >= 2 && /^amazon\./i.test(parts[0])) title = parts[1];
+  }
   if (!title) return { reason: 'no title yet' };
   const byline = (doc.querySelector('#bylineInfo')?.textContent || '').replace(/\s+/g, ' ').trim();
   const crumbs = (doc.querySelector('#wayfinding-breadcrumbs_feature_div')?.textContent || '').replace(/\s+/g, ' ');
