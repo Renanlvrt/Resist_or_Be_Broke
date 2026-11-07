@@ -21,7 +21,10 @@ export function CheckIn({ checkIn, setOn, alternative, altLoading, onChoice }: P
   const total = req.price * req.qty;
 
   useEffect(() => {
-    continueRef.current?.focus();
+    continueRef.current?.focus(); // once, on open
+  }, []);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onChoice('dismissed', answers);
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
