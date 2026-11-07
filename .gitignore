@@ -1,0 +1,35 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+coverage/
+
+# env / secrets — never commit real keys
+.env
+.env.*
+!.env.example
+
+# caches
+.cache/
+.turbo/
+.vite/
+apps/backend/.tts-cache/
+
+# logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
