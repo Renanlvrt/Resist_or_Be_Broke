@@ -166,13 +166,41 @@ class Session extends Emitter<Events> implements Interrogation {
       const a = (this.audio = new Audio(this.url));
       await new Promise<void>((res) => {
         a.onended = () => res();
-        a.onerror = () => res();
-        a.play().catch(() => res());
+        a.onerror = () => {
+          const err = new Error('audio element error: ' + (a.error?.message || a.error?.code || 'unknown'));
+          console.warn('[keephard] say()', err);
+          this.emit('error', err);
+          res();
+        };
+        a.play().catch(async (err) => {
+          console.warn('[keephard] audio.play() rejected, trying WebAudio:', err);
+          try { await this.playWebAudio(blob); }
+          catch (e2) {
+            console.warn('[keephard] WebAudio fallback failed:', e2);
+            this.emit('error', new Error(`audio blocked (${err?.name || err}); click the page / Start button first`));
+          }
+          res();
+        });
       });
     } catch (e) {
       this.emit('error', e);
     }
     this.setState(after);
+  }
+
+  private async playWebAudio(blob: Blob) {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    const ctx = new Ctx();
+    await ctx.resume();
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    await new Promise<void>((res) => {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.onended = () => res();
+      src.start();
+    });
+    ctx.close().catch(() => {});
   }
 
   private revoke() { if (this.url) { URL.revokeObjectURL(this.url); this.url = undefined; } }
