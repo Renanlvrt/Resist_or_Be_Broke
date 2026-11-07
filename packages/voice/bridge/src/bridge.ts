@@ -102,7 +102,31 @@ async function doSearch(product: any, demo?: boolean) {
   }
 }
 
-// Offer beat: (wait for the agent to finish) -> search -> say spokenLine -> clean card. Saving recorded ONLY on "Buy it cheaper".
+let autoRedirect = true;
+function mascotPresent(): boolean {
+  try { return !!document.querySelector('[data-keephard-mascot],[id*="bloub" i],[class*="bloub" i]'); } catch { return false; }
+}
+const K_DONE = 'keephard.done.';
+const prodKey = (p: any): string => { const m = String(p?.url || location.href).match(/\/(?:dp|gp\/product)\/([A-Z0-9]{8,12})/i); return (m ? m[1].toUpperCase() : String(p?.url || location.href)).slice(0, 200); };
+const started = new Set<string>();
+function wasDone(k: string): boolean { if (started.has(k)) return true; try { return !!sessionStorage.getItem(K_DONE + k); } catch { return false; } }
+function markDone(k: string) { started.add(k); try { sessionStorage.setItem(K_DONE + k, '1'); } catch { /* ignore */ } }
+function clearDone() { started.clear(); try { Object.keys(sessionStorage).filter((x) => x.startsWith(K_DONE)).forEach((x) => sessionStorage.removeItem(x)); } catch { /* ignore */ } }
+let idleT: any, capT: any;
+function clearTimers() { clearTimeout(idleT); clearTimeout(capT); }
+/** quiet shutdown: close session + mic, hide bubble, no spoken line */
+function quietEnd(why: string) {
+  clearTimers(); stop(); offerGen++;
+  ui?.peek(false); ui?.state('idle'); emit('state', { state: 'idle' }); emit('idle', { why });
+}
+let offerGen = 0; // bumped on cancel/new offer so stale countdowns do nothing
+
+function safeHttp(u: any): string | undefined {
+  try { const x = new URL(String(u)); return x.protocol === 'http:' || x.protocol === 'https:' ? x.href : undefined; } catch { return undefined; }
+}
+
+// Offer beat: (wait for the agent) -> search -> say spokenLine -> countdown -> same-tab redirect.
+// Saving is recorded only at the moment of redirect (countdown end or "Buy it cheaper"), never on offer / cancel.
 async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogation, verdict?: string) {
   if (chainBusy) return;
   chainBusy = true;
@@ -110,21 +134,32 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
     if (s) { await s.agentDone(); s.endVoice(); } // one speaking voice at a time; mic off after the verdict
     const result = await doSearch(product, demo);
     if (!result || !result.found || !result.alternative) { ui?.hideOffer(); return; }
-    ui?.offer(result, async (opened) => {
-      if (!opened) { emit('offerdismissed', {}); return; }
-      const alt = result.alternative;
+    const gen = ++offerGen;
+    const alt = result.alternative;
+    const url = safeHttp(alt.url);
+    let settled = false;
+    const go = async () => {
+      if (settled || gen !== offerGen) return;
+      settled = true; offerGen++; stop();
+      ui?.hideOffer();
+      if (!url) { ui?.error('Cheaper pair link is not a valid http(s) URL.'); return; }
       const amount = Number(result.savings) || 0;
-      const label = `${alt.title} @ ${alt.retailer}`;
-      try { window.open(alt.url, '_blank', 'noopener'); } catch { /* ignore */ }
       if (amount > 0) {
-        const { entry, total } = await recordSavings(amount, label);
+        const { entry, total } = await recordSavings(amount, `${alt.title} @ ${alt.retailer}`);
         emit('savings', { amount: entry.amount, label: entry.label, at: entry.at, savedByKeepHard: total });
-        ui?.caption(`Saved £${entry.amount.toFixed(2)} (total £${total.toFixed(2)})`, 'avatar');
       }
-    });
+      emit('redirect', { url });
+      window.location.assign(url);
+    };
+    const cancel = () => { if (settled) return; settled = true; offerGen++; stop(); ui?.hideOffer(); emit('offerdismissed', {}); };
+    ui?.offer(result, (opened) => { if (opened) void go(); else cancel(); });
     emit('offer', { result, verdict });
-    if (result.spokenLine) { try { await sayLine(result.spokenLine, 'happy'); } catch (e) { console.warn('[keephard] say failed', e); } }
-    else emit('state', { state: 'happy' });
+    if (result.spokenLine) {
+      try { await Promise.race([sayLine(result.spokenLine, 'happy'), new Promise((r) => setTimeout(r, 8000))]); }
+      catch (e) { console.warn('[keephard] say failed', e); }
+    } else emit('state', { state: 'happy' });
+    if (autoRedirect && url && !settled && gen === offerGen) ui?.countdown(3, () => void go(), cancel);
+    else if (!settled) stop(); // card only: voice session fully closed
   } finally { chainBusy = false; }
 }
 
@@ -133,7 +168,11 @@ function stop() {
   session = undefined;
 }
 
-function startSession(d: any): Promise<void> {
+function startSession(d: any, force = false): Promise<void> {
+  const k = prodKey(d.product);
+  if (!force && wasDone(k)) return Promise.resolve(); // once per product per tab session
+  markDone(k);
+  clearTimers();
   stop();
   lastDemo = !!d.demo;
   lastProduct = d.product;
@@ -146,12 +185,20 @@ function startSession(d: any): Promise<void> {
     fetch: proxyFetch,
   });
   session = s;
-  s.on('state', (state) => { emit('state', { state }); ui?.state(state); });
-  s.on('caption', (text, who) => { emit('caption', { text, who }); ui?.caption(text, who); });
-  s.on('verdict', (verdict) => { emit('verdict', { verdict }); ui?.scheduleHide(60000); ui?.caption(`Verdict: ${verdict.verdict} (${verdict.reasonCategory})`, 'avatar');
+  let userSpoke = false, gotQ = false;
+  const armIdle = () => { clearTimeout(idleT); if (!userSpoke) idleT = setTimeout(() => { if (session === s && !userSpoke) quietEnd('no user speech'); }, 12000); };
+  capT = setTimeout(() => { if (session === s && !chainBusy) quietEnd('session cap'); }, 60000);
+  s.on('state', (state) => { if (session !== s) return; emit('state', { state }); ui?.state(state); if (state === 'listening' && gotQ) armIdle(); });
+  s.on('caption', (text, who) => {
+    if (session !== s) return;
+    if (who === 'user') { userSpoke = true; clearTimeout(idleT); } else if (!gotQ) { gotQ = true; armIdle(); }
+    emit('caption', { text, who }); ui?.caption(text, who);
+  });
+  s.on('verdict', (verdict) => {
+    if (session !== s) return; clearTimeout(idleT); clearTimeout(capT); emit('verdict', { verdict }); ui?.scheduleHide(60000); ui?.caption(`Verdict: ${verdict.verdict} (${verdict.reasonCategory})`, 'avatar');
     if (autoChain) void offerBeat(d.product, d.demo, s, verdict.verdict);
   });
-  s.on('fallback', (reason) => { emit('fallback', { reason }); ui?.fallback(reason); });
+  s.on('fallback', (reason) => { if (session !== s) return; emit('fallback', { reason }); ui?.fallback(reason); });
   s.on('error', (err) => { console.warn('[keephard]', err); ui?.error(String((err as any)?.message || err)); });
   return s.start().catch((err) => { emit('fallback', { reason: String(err) }); ui?.fallback(String(err)); });
 }
@@ -190,7 +237,13 @@ window.addEventListener('keephard:typed', (e) => {
   if (session && d?.text) void session.submitTyped(d.text);
 });
 
-window.addEventListener('keephard:stop', () => { stop(); cancelAuto(); ui?.peek(false); ui?.hideOffer(); ui?.state('idle'); });
+window.addEventListener('keephard:setautoredirect', (e) => {
+  const d = readDetail(e);
+  autoRedirect = d ? d.enabled !== false : true;
+  emit('settings', { enabled, demo: demoMode, autoRedirect });
+});
+
+window.addEventListener('keephard:stop', () => { offerGen++; stop(); cancelAuto(); ui?.peek(false); ui?.hideOffer(); ui?.state('idle'); });
 
 // ---------- floating test button + panel (shadow DOM, immune to host CSS) ----------
 
@@ -231,8 +284,27 @@ input{flex:1;padding:4px;font-size:12px;border:1px solid #888;border-radius:4px}
 .typed button{padding:4px 8px;font-size:12px;border-radius:4px;border-width:1px}
 .peek{display:none;position:fixed;right:16px;bottom:16px;z-index:2147483647;width:280px;background:#111;color:#fff;border:2px solid #f5c518;border-radius:18px;box-shadow:0 8px 28px rgba(0,0,0,.5);padding:10px 12px;gap:10px;align-items:flex-start;font-size:13px;line-height:1.35}
 .peek.open{display:flex}
-.av{flex:none;width:38px;height:38px;border-radius:50%;background:#f5c518;color:#111;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px}
-.av.live{animation:pulse 1.4s ease-in-out infinite}
+.av{flex:none;width:46px;height:46px;animation:bob 2.2s ease-in-out infinite}
+.av svg{width:100%;height:100%;overflow:visible}
+.av .face{fill:#f5c518;stroke:#111;stroke-width:2}
+.av .eye{fill:#111;transform-box:fill-box;transform-origin:center;animation:blink 4s infinite}
+.av .brow{stroke:#111;stroke-width:2.5;stroke-linecap:round;transform-box:fill-box;transform-origin:center}
+.av .mo{display:none;fill:#111;stroke:#111;stroke-width:2;stroke-linecap:round;transform-box:fill-box;transform-origin:center}
+.av .mo.n{display:block}
+.av .mo.sm,.av .mo.fr{fill:none}
+.av.happy .mo.n,.av.sad .mo.n{display:none}.av.happy .mo.sm{display:block}.av.sad .mo.fr{display:block}
+.av.talk .mo.n{animation:talk .22s ease-in-out infinite alternate}
+.av.listen .eye{transform:scale(1.35)}.av.listen .brow{transform:translateY(-2px)}
+.av.sad .bl{transform:rotate(18deg)}.av.sad .br{transform:rotate(-18deg)}
+.av.happy .brow{transform:translateY(-1.5px)}
+.av.live{filter:drop-shadow(0 0 6px rgba(245,197,24,.9))}
+.peek.open{animation:pop .35s cubic-bezier(.34,1.56,.64,1)}
+.peek.small{width:210px;padding:6px 8px;font-size:11px;animation:none}.peek.small .av{width:28px;height:28px}
+.toast{display:none;position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:2147483647;background:#111;color:#f5c518;border-radius:999px;padding:6px 14px;font:600 12px system-ui,sans-serif}.toast.open{display:block}
+@keyframes pop{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.08);opacity:1}100%{transform:scale(1)}}
+@keyframes bob{50%{transform:translateY(-3px)}}
+@keyframes talk{from{transform:scaleY(.4)}to{transform:scaleY(1.6)}}
+@keyframes blink{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}
 .pbody{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .pcap{max-height:70px;overflow:hidden}.pme{color:#9cc4ff;font-size:12px}
 .px{position:absolute;top:2px;right:6px;background:none;border:0;color:#aaa;font-size:16px;padding:0;box-shadow:none;cursor:pointer}
@@ -244,15 +316,21 @@ input{flex:1;padding:4px;font-size:12px;border:1px solid #888;border-radius:4px}
 .obtns{display:flex;gap:8px;margin-top:6px}
 .obtns .buy{flex:1;background:#f5c518;color:#111;border:0;border-radius:8px;padding:10px;font-weight:800}
 .obtns .no{background:#fff;color:#444;border:1px solid #bbb;border-radius:8px;padding:10px;box-shadow:none}
+.cd{display:none;align-items:center;gap:8px;font-weight:700;color:#0a7a3b}.cd.open{display:flex}.cd span{flex:1}
+.cd button{background:#fff;color:#444;border:1px solid #bbb;border-radius:8px;padding:6px 10px;box-shadow:none}
 .tap{display:none;position:fixed;right:20px;bottom:20px;z-index:2147483647;background:#f5c518;color:#111;border-radius:999px;padding:16px 24px;font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 0 0 0 rgba(245,197,24,.7);animation:ring 1.5s infinite}
 .tap.open{display:block}
 @keyframes ring{0%{box-shadow:0 0 0 0 rgba(245,197,24,.7)}100%{box-shadow:0 0 0 26px rgba(245,197,24,0)}}
 @keyframes pulse{50%{transform:scale(1.12)}}
 </style>
-<div class="peek"><button class="px" title="Close">&times;</button><div class="av">K</div>
+<div class="peek"><button class="px" title="Close">&times;</button><div class="av"><svg viewBox="0 0 46 46"><circle class="face" cx="23" cy="23" r="20"/>
+<line class="brow bl" x1="11" y1="14" x2="19" y2="14"/><line class="brow br" x1="27" y1="14" x2="35" y2="14"/>
+<circle class="eye" cx="16" cy="20" r="2.6"/><circle class="eye" cx="30" cy="20" r="2.6"/>
+<ellipse class="mo n" cx="23" cy="32" rx="5" ry="2"/><path class="mo sm" d="M14 29 Q23 40 32 29"/><path class="mo fr" d="M15 34 Q23 27 31 34"/></svg></div>
   <div class="pbody"><div class="pcap"></div><div class="pme"></div>
     <div class="ptyped"><input placeholder="Type your reason..."><button>Send</button></div></div></div>
-<div class="offer"><div class="otitle"></div><div class="oret"></div><div class="oprice"></div><div class="badge"></div><div class="obtns"><button class="buy">Buy it cheaper</button><button class="no">No thanks</button></div></div>
+<div class="offer"><div class="otitle"></div><div class="oret"></div><div class="oprice"></div><div class="badge"></div><div class="obtns"><button class="buy">Buy it cheaper</button><button class="no">No thanks</button></div><div class="cd"><span></span><button class="stay">Stay here</button></div></div>
+<div class="toast"></div>
 <div class="tap">Tap anywhere to talk</div>
 <div class="wrap">
   <div class="panel"><div class="state">state: idle</div><div class="err"></div><div class="log"></div>
@@ -317,7 +395,7 @@ class Panel {
       this.typed.classList.add('open');
     }
     this.state('connecting');
-    await startSession({ product: DEMO_PRODUCT });
+    await startSession({ product: DEMO_PRODUCT }, true);
   }
 
   private async onSkip() {
@@ -336,7 +414,18 @@ class Panel {
     this.res.classList.add('open');
   }
 
-  hideOffer() { this.offerEl.classList.remove('open'); }
+  private cdT: any;
+  hideOffer() { clearInterval(this.cdT); (this.offerEl.querySelector('.cd') as HTMLElement)?.classList.remove('open'); this.offerEl.classList.remove('open'); }
+  countdown(n: number, go: () => void, cancel: () => void) {
+    const cd = this.offerEl.querySelector('.cd') as HTMLElement, sp = cd.querySelector('span') as HTMLElement;
+    const o = cd.querySelector('.stay') as HTMLElement, st = o.cloneNode(true) as HTMLElement; o.replaceWith(st);
+    st.addEventListener('click', () => { clearInterval(this.cdT); cancel(); });
+    clearInterval(this.cdT);
+    let left = n;
+    const tick = () => { if (left <= 0) { clearInterval(this.cdT); go(); return; } sp.textContent = `Taking you there in ${left}...`; left--; };
+    cd.classList.add('open'); tick();
+    this.cdT = setInterval(tick, 1000);
+  }
   offer(r: any, done: (opened: boolean) => void) {
     const a = r.alternative, q = (s: string) => this.offerEl.querySelector(s) as HTMLElement;
     q('.otitle').textContent = a.title;
@@ -350,7 +439,12 @@ class Panel {
     this.peekEl.classList.remove('open');
     this.offerEl.classList.add('open');
   }
-  peek(on: boolean) { this.peekEl.classList.toggle('open', on); if (!on) { this.pcap.textContent = ''; this.pme.textContent = ''; this.ptyped.classList.remove('open'); } }
+  toast(t: string) { const el = this.root.querySelector('.toast') as HTMLElement; el.textContent = t; el.classList.add('open'); setTimeout(() => el.classList.remove('open'), 2200); }
+  peek(on: boolean) {
+    if (on) this.peekEl.classList.toggle('small', mascotPresent());
+    const was = this.peekEl.classList.contains('open');
+    this.peekEl.classList.toggle('open', on);
+    if (on !== was) emit('peek', { on }); if (!on) { this.pcap.textContent = ''; this.pme.textContent = ''; this.ptyped.classList.remove('open'); } }
   hideTest() { (this.root.querySelector('.go') as HTMLElement).style.display = 'none'; (this.root.querySelector('.skip') as HTMLElement).style.display = 'none'; }
   tap(on: boolean) { this.tapEl.classList.toggle('open', on); }
   typedOpen() { this.ptyped.classList.add('open'); }
@@ -358,7 +452,12 @@ class Panel {
   scheduleHide(ms = 15000) { clearTimeout(this.hideT); this.hideT = setTimeout(() => this.peek(false), ms); }
   state(s: string) {
     this.stateEl.textContent = 'state: ' + s;
-    this.av.classList.toggle('live', s === 'speaking' || s === 'listening' || s === 'connecting');
+    const talk = s === 'speaking' || s === 'talking';
+    this.av.classList.toggle('live', talk || s === 'listening' || s === 'connecting');
+    this.av.classList.toggle('talk', talk);
+    this.av.classList.toggle('listen', s === 'listening');
+    this.av.classList.toggle('happy', s === 'happy');
+    this.av.classList.toggle('sad', s === 'disappointed');
   }
   caption(text: string, who: 'avatar' | 'user') {
     if (this.peekEl.classList.contains('open')) {
@@ -426,7 +525,6 @@ async function beginSession(product: any) {
   p?.caption('Allow the mic to talk', 'avatar');
   p?.hideTest();
   const short = String(product?.title || 'those').split(/[,(-]/)[0].trim().slice(0, 50);
-  p?.caption(`Hold on. Before you buy the ${short}...`, 'avatar');
   // probe the mic so a denial / dismissed prompt is visible; typed input is the fallback
   try {
     const st = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -480,7 +578,7 @@ function check() {
     cancelAuto();
     curKey = key; titleSeenAt = 0;
   }
-  if (!enabled || !key || !isProductUrl(location.href) || triggered.has(key)) return;
+  if (!enabled || !key || !isProductUrl(location.href) || triggered.has(key) || wasDone(prodKey({ url: location.href }))) return;
   let r = detectProduct(document, location.href, { demo: false });
   if (!r.product && r.reason === 'no price yet' && demoMode) {
     titleSeenAt = titleSeenAt || Date.now();
@@ -519,6 +617,28 @@ window.addEventListener('keephard:setdemo', (e) => {
   scheduleCheck();
   emit('settings', { enabled, demo: demoMode });
 });
+
+function setEnabled(v: boolean) {
+  enabled = v;
+  try { void chrome.storage.local.set({ [K_ENABLED]: enabled }); } catch { /* ignore */ }
+  if (!v) { clearTimers(); stop(); offerGen++; cancelAuto(); ui?.hideOffer(); ui?.peek(false); }
+  ensureUi()?.toast('KeepHard ' + (v ? 'ON' : 'OFF'));
+  emit('settings', { enabled, demo: demoMode, autoRedirect });
+}
+if (window.top === window) {
+  window.addEventListener('keydown', (e) => {
+    if (!e.altKey || !e.shiftKey) return;
+    if (e.code === 'KeyK') { e.preventDefault(); setEnabled(!enabled); }
+    else if (e.code === 'KeyR') {
+      e.preventDefault();
+      clearTimers(); stop(); offerGen++; chainBusy = false; cancelAuto(); ui?.hideOffer(); ui?.peek(false);
+      clearDone(); triggered.clear(); enabled = true;
+      ensureUi()?.toast('KeepHard replay');
+      const r = productKey() ? detectProduct(document, location.href, { demo: demoMode }) : undefined;
+      void autoStart(r?.product || { ...DEMO_PRODUCT, url: location.href });
+    }
+  }, true);
+}
 
 if (window.top === window) {
   void loadSettings().then(() => {

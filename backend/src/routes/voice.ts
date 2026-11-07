@@ -70,17 +70,17 @@ function keywordVerdict(userText: string, round: number) {
   const has = (w: string[]) => w.some((x) => t.includes(x));
   const summary = userText.slice(0, 80);
   if (has(['fashion', 'friend', 'everyone', 'look', 'style', 'trend']))
-    return { verdict: 'reject', reasonCategory: 'fashion', userReasonSummary: summary, spokenLine: "Not a valid reason. But if you really want them, here is a cheaper pair." };
+    return { verdict: 'reject', reasonCategory: 'fashion', userReasonSummary: summary, spokenLine: "Really?! This is not like you. Fashion is off this month. Here is a cheaper pair." };
   if (has(['track', 'training', 'run', 'sport', 'gym', 'race']))
-    return { verdict: 'accept', reasonCategory: 'sport', userReasonSummary: summary, spokenLine: "Fair reason. Here is a cheaper pair anyway." };
+    return { verdict: 'accept', reasonCategory: 'sport', userReasonSummary: summary, spokenLine: "Okay, training. Fair. Still, here is a cheaper pair." };
   return round >= 2
-    ? { verdict: 'accept', reasonCategory: 'other', userReasonSummary: summary, spokenLine: "Fair reason. Here is a cheaper pair anyway." }
-    : { verdict: 'reject', reasonCategory: 'other', userReasonSummary: summary, spokenLine: "Not a valid reason. But if you really want them, here is a cheaper pair." };
+    ? { verdict: 'accept', reasonCategory: 'other', userReasonSummary: summary, spokenLine: "Okay, training. Fair. Still, here is a cheaper pair." }
+    : { verdict: 'reject', reasonCategory: 'other', userReasonSummary: summary, spokenLine: "Really?! This is not like you. Fashion is off this month. Here is a cheaper pair." };
 }
 
 router.post('/judge', async (req, res) => {
   const { profile, product, userText = '', round = 1 } = req.body ?? {};
-  const sys = 'You are KeepHard, a short, punchy, supportive student money coach. Judge whether the user\'s reason for buying fits their budget rules. Reject fashion or "friend has it" reasons; accept sport/training reasons within limits. Decide immediately in one round. Reject spokenLine: Not a valid reason. But if you really want them, here is a cheaper pair. Accept spokenLine: Fair reason. Here is a cheaper pair anyway. Reply with ONLY JSON: {"verdict":"accept"|"reject","reasonCategory":"sport"|"fashion"|"eating_out"|"groceries"|"tech"|"other","userReasonSummary":string,"spokenLine":string (max 12 words, one short sentence, no preamble, no emotion tags)}.';
+  const sys = 'You are KeepHard, a short, punchy, supportive student money coach. Judge whether the user\'s reason for buying fits their budget rules. Reject fashion or "friend has it" reasons; accept sport/training reasons within limits. Decide immediately in one round. Reject spokenLine: Really?! This is not like you. Fashion is off this month. Here is a cheaper pair. Accept spokenLine: Okay, training. Fair. Still, here is a cheaper pair. Reply with ONLY JSON: {"verdict":"accept"|"reject","reasonCategory":"sport"|"fashion"|"eating_out"|"groceries"|"tech"|"other","userReasonSummary":string,"spokenLine":string (max 12 words, one short sentence, no preamble, no emotion tags)}.';
   const usr = `Rules: ${JSON.stringify(dynamicVariables(profile, product))}\nProduct: ${product?.title} £${product?.price}\nRound: ${round}\nUser said: "${userText}"`;
   try {
     const out = await askClaude(sys, usr, 2000, 300);

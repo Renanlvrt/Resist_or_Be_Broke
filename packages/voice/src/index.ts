@@ -25,7 +25,7 @@ type Events = {
 };
 
 const MAX_ROUNDS = 1; // one-round flow: every verdict is final
-const OPENING = 'Quick check before you buy. Why do you need these?';
+const OPENING = 'Why do you need these shoes?';
 
 export interface Interrogation {
   on: Emitter<Events>['on'];

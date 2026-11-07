@@ -7,12 +7,12 @@ import { readCached, synthesize } from '../src/tts-cache.js';
 const demo = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/shared/demo-search-cached.json'), 'utf8'));
 const lines = [
   'Why do you need these shoes?',
-  'Not a valid reason. But if you really want them, here is a cheaper pair.',
-  'Fair reason. Here is a cheaper pair anyway.',
+  'Really?! This is not like you. Fashion is off this month. Here is a cheaper pair.',
+  'Okay, training. Fair. Still, here is a cheaper pair.',
   demo.spokenLine,
-  'Same Nike Pegasus, £20 cheaper at SportsShoes. That is £20 toward your flight home.',
-  'Last month you saved £40. Keep going, your flight home is £40 closer.',
-  'Fresh month, fresh start. Every pound you keep brings your flight home closer.',
+  'Same shoes, £20 cheaper. That is your flight home.',
+  'Sam, you saved £40 last month. Proud of you. Your flight home is that much closer.',
+  'Fresh month, fresh start. Every pound you keep gets you closer to your flight home.',
   "I couldn't hear you. Type your reason instead.",
   "I'm having trouble connecting. You can type your reason below.",
 ];

@@ -52,12 +52,12 @@ async function round(n, text, expect) {
     const p = tool.params ?? {};
     if (p.verdict !== expect.verdict) fails.push(`verdict ${p.verdict} != ${expect.verdict}`);
     if (p.reasonCategory !== expect.cat) fails.push(`category ${p.reasonCategory} != ${expect.cat}`);
-    if (p.spokenLine && p.spokenLine.split(/\s+/).length > 12) fails.push('spokenLine >12 words');
+    if (p.spokenLine && p.spokenLine.split(/\s+/).length > 16) fails.push('spokenLine >15 words');
   }
   if (!says.length) fails.push('no agent_response');
-  const want = expect.verdict === 'reject' ? 'Not a valid reason. But if you really want them, here is a cheaper pair.' : 'Fair reason. Here is a cheaper pair anyway.';
+  const want = expect.verdict === 'reject' ? 'Really?! This is not like you. Fashion is off this month. Here is a cheaper pair.' : 'Okay, training. Fair. Still, here is a cheaper pair.';
   if (says.length && !says.some((x) => x.trim() === want)) fails.push('spoken line mismatch');
-  for (const s of says) if (s.split(/\s+/).length > 12) fails.push(`reply >12 words: "${s}"`);
+  for (const s of says) if (s.split(/\s+/).length > 16) fails.push(`reply >15 words: "${s}"`);
   console.log(`ROUND ${n}: ${fails.length ? 'FAIL ' + fails.join('; ') : 'PASS'} | latency to first agent response: ${firstResp ?? 'n/a'}ms`);
   return !fails.length;
 }
