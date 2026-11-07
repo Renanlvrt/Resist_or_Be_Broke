@@ -139,6 +139,7 @@ export function acceptLine(line: unknown, savings: number, price: number): line 
 // ---------- demo data + fallback ----------
 
 const shared = (f: string) => JSON.parse(readFileSync(path.join(ROOT, 'packages/shared', f), 'utf8'));
+export const cachedResult = (): SearchResult => shared('demo-search-cached.json');
 const asinOf = (u?: string) => /\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i.exec(u ?? '')?.[1]?.toUpperCase();
 
 // ---- Curated demo alternatives (B's logic from main, unchanged): ASIN / aliases / keyword match, colour-aware ----
@@ -167,8 +168,7 @@ function findDemo(demoAlts: any, product: any): any {
 export function curatedFor(product: any, reasonText?: string): (SearchResult & { matchedColour?: string }) | null {
   const hit = findDemo(shared('demo-alternatives.json'), product ?? {});
   if (!hit) return null;
-  // B: never offer a curated alternative that isn't cheaper than the price on the page.
-  if (Number(product?.price) > 0 && Number(hit.alternative?.price) >= Number(product.price)) return { found: false, savings: 0, spokenLine: '', cached: true };
+  if (Number(product?.price) > 0 && Number(hit.alternative?.price) >= Number(product.price)) return null; // must really be cheaper
   const colour = colourIn(reasonText);
   const v = colour && hit.variants?.[colour];
   if (v) return { found: true, alternative: withColour(v.alternative, cap(colour)), matchedColour: cap(v.alternative.colour), savings: v.savings, spokenLine: v.spokenLine, cached: true };
@@ -177,8 +177,10 @@ export function curatedFor(product: any, reasonText?: string): (SearchResult & {
     spokenLine: mismatch ? mismatchLine(hit) : hit.spokenLine, cached: true };
 }
 
-/** No verified alternative (B, main): never invent a price or saving. */
-export const notFound = (): SearchResult => ({ found: false, savings: 0, spokenLine: '', cached: false });
+/** Last resort: never invent a price or saving. */
+export function fallbackResult(_product: Partial<Product>): SearchResult {
+  return { found: false, savings: 0, spokenLine: '', cached: false };
+}
 
 // ---------- live path ----------
 
@@ -384,7 +386,7 @@ async function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
 
 // ---------- route ----------
 
-// Lenient: the extension may send a product before the price has rendered. Without title+price we skip live search (-> not found).
+// Lenient: the extension may send a product before the price has rendered. Without title+price we skip live search.
 const ProductZ = z.object({
   title: z.string().min(1).max(300),
   brand: z.string().max(100).default(''),
@@ -425,8 +427,8 @@ router.post('/', async (req, res) => {
     }
     reason = r ? r.reason : 'live still running (kept for next time)';
   }
-  const none = notFound();
-  log(none, `not found, ${reason}`);
-  res.json(none);
+  const fb = fallbackResult(product);
+  log(fb, `fallback, ${reason}`);
+  res.json(fb);
 });
 export default router;

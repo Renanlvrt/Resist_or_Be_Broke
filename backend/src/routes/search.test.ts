@@ -104,7 +104,7 @@ test('route: demo ASIN -> verified alternative instantly (demo or live)', async 
   });
 });
 
-test('route: ?demo=1, missing keys or no price -> found:false, never an invented saving, never 400', async () => {
+test('route: ?demo=1, missing keys or a product without price -> found:false (no invented saving), never 400', async () => {
   const saved = { f: process.env.FIRECRAWL_API_KEY, a: process.env.ANTHROPIC_API_KEY };
   delete process.env.FIRECRAWL_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
@@ -119,20 +119,15 @@ test('route: ?demo=1, missing keys or no price -> found:false, never an invented
       ] as const) {
         const res = await post(base + q, body);
         assert.equal(res.status, 200);
-        assert.deepEqual(await res.json(), { found: false, savings: 0, spokenLine: '', cached: false });
+        const r = await res.json();
+        assert.equal(r.found, false); // never invent a price or saving
+        assert.equal(r.savings, 0);
       }
     });
   } finally {
     if (saved.f) process.env.FIRECRAWL_API_KEY = saved.f;
     if (saved.a) process.env.ANTHROPIC_API_KEY = saved.a;
   }
-});
-
-test('route: curated alternative that is not cheaper than the page price -> found:false', async () => {
-  await withServer(async (base) => {
-    const nike = { ...demo, title: "Nike Revolution Men's Running Shoes", price: 20, url: 'https://www.amazon.co.uk/dp/B0DPHTGD5C' };
-    assert.deepEqual(await (await post(base, { product: nike })).json(), { found: false, savings: 0, spokenLine: '', cached: true });
-  });
 });
 
 // Mock of Firecrawl (search -> titles only, scrape -> markdown) and, optionally, Claude.

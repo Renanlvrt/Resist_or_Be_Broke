@@ -610,6 +610,8 @@ async function autoStart(product: any) {
   if (session) return; // an interrogation is already running (manual start)
   emit('detected', { product });
   prewarmSession(product);
+  // search prefetch: backend runs the live search in the background so the real call answers from memory
+  proxyFetch(BACKEND + '/api/search?prefetch=1', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ product }) }).catch(() => {});
   ensureUi();
   if (await tryUnlockAudio()) { await beginSession(product); return; }
   // autoplay blocked: friendly bubble, start on the first real gesture
