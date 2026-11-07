@@ -108,7 +108,8 @@ try {
   await window.eval(source);
   await wait(() => window.document.documentElement.dataset.pocketExtension === 'ready', 'reinject ready');
   assert.equal(window.document.querySelectorAll('pocket-companion').length, 1);
-  assert.equal(local.messages.size, 1); assert.equal(local.changes.size, 1);
+  // storage listeners: App's sound-mute + the voice layer's savings sync (keephard/store.ts). A leak would show 4.
+  assert.equal(local.messages.size, 1); assert.equal(local.changes.size, 2);
   shadow = window.document.querySelector('pocket-companion').shadowRoot;
   assert(!shadow.querySelector('.dev-panel'));
   for (const listener of local.messages) await listener({ type: 'POCKET_OPEN_LAB' });

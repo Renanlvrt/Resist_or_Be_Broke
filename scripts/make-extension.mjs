@@ -5,10 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-// Frontend bundle: WXT builds extension/ into extension/.output/chrome-mv3 (`cd extension && npm run build`).
-const src = [path.join(root, 'extension', '.output', 'chrome-mv3'), path.join(root, 'chrome-mv3', 'chrome-mv3')]
-  .find((p) => fs.existsSync(path.join(p, 'manifest.json')));
-if (!src) throw new Error('frontend bundle not found: run `cd extension && npm run build` first');
+const src = path.join(root, 'chrome-mv3', 'chrome-mv3');
 const out = path.join(root, 'chrome-mv3-voice');
 const voice = path.join(root, 'packages', 'voice');
 const dist = path.join(voice, 'bridge', 'dist');
