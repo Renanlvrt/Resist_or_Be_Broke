@@ -255,7 +255,9 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
       if (!url) { stop(); await endNotFound('bad url'); return; }
       const amount = Number(result.savings) || 0;
       if (amount > 0) {
-        const { entry, total } = await recordSavings(amount, `${alt.title} @ ${alt.retailer}`);
+        // short receipt label: "Nike Revolution 8" (no "Men's Running Shoes - HO25" tail)
+        const short = String(alt.title || 'Cheaper pair').replace(/\s+[-–(|].*$/, '').replace(/\s+(Men'?s|Women'?s|Unisex)\b.*$/i, '').trim() || 'Cheaper pair';
+        const { entry, total } = await recordSavings(amount, short);
         emit('savings', { amount: entry.amount, label: entry.label, at: entry.at, savedByKeepHard: total });
       }
       await bye(BYE_GO);
