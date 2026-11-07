@@ -31,8 +31,6 @@ const avoided = [
 ];
 const bought = [
   { title: 'Phone case', amount: 12 },
-  { title: 'Snacks', amount: 8 },
-  { title: 'Dinner', amount: 24 },
 ];
 </script>
 
