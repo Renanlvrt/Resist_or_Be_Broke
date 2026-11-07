@@ -24,7 +24,7 @@ const body = {
         prompt,
         llm: 'gemini-2.0-flash',
         tools: [{
-          type: 'client', name: 'decide', expects_response: false,
+          type: 'client', name: 'decide', expects_response: true,
           description: 'Report the verdict on the purchase reason. Call after judging each answer.',
           parameters: {
             type: 'object',
