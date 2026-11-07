@@ -33,3 +33,7 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# generated voice extension
+chrome-mv3-voice/
+backend.log
