@@ -355,8 +355,13 @@ function startSession(d: any, force = false): Promise<void> {
   });
   s.on('verdict', (verdict) => {
     if (session !== s) return; verdictSeen = true; clearTimeout(idleT); clearTimeout(capT); if (verdict?.userReasonSummary) reasonSummary = String(verdict.userReasonSummary); emit('verdict', { verdict }); ui?.scheduleHide(60000); if (!integrated) ui?.caption(`Verdict: ${verdict.verdict} (${verdict.reasonCategory})`, 'avatar');
-    if (autoChain) void offerBeat(d.product, d.demo, s, verdict.verdict, s.finished);
+    clearTimeout(firstRejectT);
+    if (!autoChain) return;
+    // First reject: NO cheaper card, just the agent's "no". The card only comes after the user insists (final verdict).
+    if (s.finished) void offerBeat(d.product, d.demo, s, verdict.verdict, true);
+    else firstRejectT = setTimeout(() => { if (session === s && !chainBusy) void offerBeat(d.product, d.demo, s, verdict.verdict, true); }, 20000); // user went silent: show it anyway
   });
+  let firstRejectT: ReturnType<typeof setTimeout> | undefined;
   s.on('fallback', (reason) => { if (session !== s) return; emit('fallback', { reason }); ui?.fallback(reason); });
   s.on('error', (err) => { console.warn('[keephard]', err); ui?.error(String((err as any)?.message || err)); });
   return s.start().catch((err) => { emit('fallback', { reason: String(err) }); ui?.fallback(String(err)); });
