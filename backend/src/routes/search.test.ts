@@ -144,7 +144,7 @@ function mockApis(claude: 'ok' | 'fail') {
     const url = String(input instanceof Request ? input.url : input);
     if (url === 'https://api.firecrawl.dev/v2/search') {
       searches++;
-      seen.search = JSON.parse(init.body);
+      seen.search ??= JSON.parse(init.body); // the first phrasing; the others follow in parallel
       return Response.json({
         success: true,
         data: {
@@ -166,7 +166,7 @@ function mockApis(claude: 'ok' | 'fail') {
     if (url.startsWith('https://api.anthropic.com/v1/messages')) {
       seen.claude = JSON.parse(init.body);
       if (claude === 'fail') return new Response('{}', { status: 401 });
-      const sd = seen.claude.messages[0].content.includes('page 0: Sports Direct') ? 0 : 1;
+      const sd = /page 0:[^\n]*Sports Direct/.test(seen.claude.messages[0].content) ? 0 : 1;
       const text = JSON.stringify({
         offers: [
           { page: sd, title: 'Nike Pegasus 41 Road Running Shoes Mens', price: 69 },
@@ -218,7 +218,7 @@ test('route: live path scrapes only same-model candidates; Claude picks the chea
       assert.equal(r.savings, 50.99);
       assert.equal(r.spokenLine, 'Same Pegasus 41 is £50.99 cheaper at Sports Direct.');
     });
-    assert.equal(m.seen.search.query, 'Nike Pegasus 41');
+    assert.equal(m.seen.search.query, 'Nike Pegasus 41 UK buy');
     assert.equal(m.seen.search.country, 'GB');
     assert.equal(m.seen.search.scrapeOptions, undefined, 'search must not scrape (17 s cold)');
     // By You, GORE-TEX and the category page are never scraped
@@ -262,7 +262,7 @@ test('route: ?prefetch=1 returns 202 at once; the real call reuses the same sear
       const again = await (await post(base, { product: demo })).json();
       assert.equal(again.alternative.price, 69);
     });
-    assert.equal(m.searches(), 1, 'prefetch + 2 calls = one Firecrawl search');
+    assert.equal(m.searches(), 4, 'prefetch + 2 calls = one round of 4 Firecrawl searches (3 phrasings + previous generation)');
   } finally {
     m.restore();
   }
@@ -275,13 +275,14 @@ test('memo: "nothing cheaper" is remembered, errors are retried', async () => {
       const cheap = { ...demo, price: 60 }; // every offer is dearer -> nothing cheaper
       await post(base, { product: cheap });
       await post(base, { product: cheap });
-      assert.equal(m.searches(), 1);
+      assert.equal(m.searches(), 4, 'one round of searches, then remembered');
     });
   } finally {
     m.restore();
   }
   const realFetch = globalThis.fetch;
   let calls = 0;
+  let first = 0;
   process.env.FIRECRAWL_API_KEY = 'test';
   clearMemo();
   try {
@@ -293,10 +294,11 @@ test('memo: "nothing cheaper" is remembered, errors are retried', async () => {
         return new Response('rate limited', { status: 429 });
       }) as typeof fetch;
       await post(base, { product: demo });
+      first = calls;
       await post(base, { product: demo });
     });
-    // each post: search 429 -> one retry (also 429) -> error; the error is not memoised, so the second post searches again
-    assert.equal(calls, 4, 'a Firecrawl 429 must not be cached');
+    // the error is not memoised: the second post searches again
+    assert.ok(first > 0 && calls > first, 'a Firecrawl 429 must not be cached');
   } finally {
     globalThis.fetch = realFetch;
     delete process.env.FIRECRAWL_API_KEY;

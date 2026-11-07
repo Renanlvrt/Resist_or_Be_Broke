@@ -53,3 +53,6 @@ Decoupled voice bridge (`packages/voice/bridge`, loaded as a second content scri
 | bridge -> page | `keephard:fallback` | `{reason: string}` (voice failed: show a text input, send `keephard:typed`) |
 
 All backend calls (`http://localhost:8787`) go through the extension background service worker (`chrome.runtime` messaging). `packages/voice` gained an optional `fetch` option in `InterrogationOptions` for this.
+
+### Integrated (Pocket) UI events
+bridge -> UI: `keephard:ui {kind, ...}` with kind in peek{on}, state{state}, caption{text,who}, offer{result}, countdown{left} (0 = paused), hideoffer, impact{price,goal}, recovered{price,amount}, tap{on}, typedopen, error{text}, toast{text}; also `keephard:detected`, `keephard:settings {enabled,integrated}`. UI -> bridge: `keephard:uiready`, `keephard:offerchoice {buy:boolean}`, `keephard:stay`.

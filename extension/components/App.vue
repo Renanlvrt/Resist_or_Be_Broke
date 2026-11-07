@@ -7,6 +7,8 @@ import { installAmazonAdapter, type AmazonIntent } from '../lib/amazon';
 import BloubBot from './BloubBot.vue';
 import Dashboard from './Dashboard.vue';
 import Onboarding from './Onboarding.vue';
+import VoiceLayer from '../keephard/VoiceLayer.vue'; // KEEPHARD
+import { useVoice } from '../keephard/useVoice'; // KEEPHARD
 import { MascotController, MASCOT_ACTIONS } from '../lib/controller';
 import { MockFinanceProvider, money, scenarios, storage } from '../lib/finance';
 import { EXPRESSIONS, type ExpressionId } from '../bot/expressions';
@@ -17,6 +19,7 @@ const sound=new SoundEffects({
   async write(muted){await browser.storage.local.set({'pocket-sound-muted':muted});},
 });
 const controller=new MascotController(undefined,undefined,action=>sound.action(action));const scene=controller.scene;
+const voice=useVoice(controller); // KEEPHARD: voice bridge <-> Bloub
 const stage=ref<HTMLElement>();const shell=ref<HTMLElement>();const panel=ref(false);const onboarding=ref(false);const feedback=ref('');
 const isLocal=['localhost','127.0.0.1'].includes(location.hostname);
 const isAmazon=location.hostname==='www.amazon.co.uk';
@@ -48,7 +51,7 @@ async function action(type:MascotAction){cancelWork();cancelAmazon();await contr
 function openDashboard(){leaveCorner(false);cancelWork();cancelAmazon();onboarding.value=false;void controller.dispatch({type:'OPEN_DASHBOARD'});}
 function closeDashboard(){void action('CLOSE_DASHBOARD');}
 function enterCorner(){
-  if(hovering||scene.dashboard||onboarding.value||scene.dialogue||busy.value)return;
+  if(voice.active()||hovering||scene.dashboard||onboarding.value||scene.dialogue||busy.value)return; // KEEPHARD: no dashboard hover while voice is live
   hovering=true;void controller.dispatch({type:'PEEK'});
   hoverTimer=setTimeout(()=>{hovering=false;openDashboard();},1250);
 }
@@ -146,7 +149,7 @@ onMounted(async()=>{
   window.addEventListener('pointermove',hotspotPointer,{passive:true});document.addEventListener('pointerleave',viewportLeave);window.addEventListener('blur',leaveCornerOnBlur);
   window.addEventListener('pointerdown',gesture,{capture:true,passive:true});window.addEventListener('keydown',gesture,true);
   browser.runtime.onMessage.addListener(onMessage);browser.storage.onChanged.addListener(soundChange);
-  if(isAmazon)amazonAdapter=installAmazonAdapter({document,onPurchase(intent){cancelWork();cancelAmazon();pendingAmazon.value=intent;void evaluate(intent.item);},onUnavailable(){toast('Pocket could not read a price for this item. Amazon’s button is unchanged.');}});
+  if(isAmazon)amazonAdapter=installAmazonAdapter({document,acceptEvent:e=>e.isTrusted&&!voice.voiceOwnsPage(),onPurchase(intent){cancelWork();cancelAmazon();pendingAmazon.value=intent;void evaluate(intent.item);},onUnavailable(){toast('Can’t read a price on that one. Amazon’s button is untouched.');}});
   try{await Promise.all([finance.load(),sound.load()]);}catch{toast('Using session-only demo data: local storage unavailable.');}
   ready.value=true;
   if(isLocal){document.documentElement.dataset.pocketExtension='ready';window.dispatchEvent(new CustomEvent('pocket:ready'));}
@@ -178,8 +181,9 @@ onBeforeUnmount(()=>{cancelWork();cancelAmazon();amazonAdapter?.dispose();sound.
       <div class="mascot-idle" :class="{sway:scene.action==='IDLE'}"><button class="mascot-button" :tabindex="scene.visible?0:-1" aria-label="Open Pocket dashboard" @click="openDashboard"><BloubBot :state="scene.internal" :expression="scene.expression" :active="scene.visible" :follow="follow&&scene.visible&&scene.action!=='THINKING'" :gaze="scene.action==='THINKING'?thinkingGaze:null" /></button></div>
       <span v-if="scene.exclamation" class="exclamation" data-exclamation>!</span><span v-if="scene.badge" class="approval-badge">✓ {{scene.badge}}<small>Why? {{money(finance.state.profile.balance)}} balance · {{money(finance.forecast().lowest)}} projected low · no applicable promise.</small></span>
     </div>
+    <VoiceLayer />
     <button v-if="!scene.dashboard&&!onboarding" class="corner-hotspot" aria-label="Open Pocket monthly recap" @click="openDashboard"></button>
-    <div class="notification-region" aria-live="polite"><Transition name="toast"><div v-if="feedback" class="toast-message">{{feedback}}</div></Transition><span v-if="busy" class="loading-note">Pocket is having a little think…</span></div>
+    <div class="notification-region" aria-live="polite"><Transition name="toast"><div v-if="feedback" class="toast-message">{{feedback}}</div></Transition><span v-if="busy" class="loading-note">Right then, having a think…</span></div>
 
     <section v-if="panel" class="dev-panel" aria-label="Developer testing panel"><header><div><span class="eyebrow">FRONTEND PLAYGROUND</span><h2>The Pocket lab</h2></div><button class="icon-button" aria-label="Close developer panel" @click="panel=false">✕</button></header><div class="dev-status"><span>State <b data-current-state>{{scene.action}}</b></span><span>Event <b>{{scene.lastEvent}}</b></span></div><p class="small-note">Developer mode · deterministic mock provider · no automated orders or real reminders.</p>
       <div class="dev-sound"><label><input type="checkbox" :checked="sound.state.muted" @change="sound.setMuted(($event.target as HTMLInputElement).checked)">Mute sounds</label><button class="quiet-button" @click="sound.play('happy');toast(sound.state.ready?'Quiet sound test played.':'Sound waits for a trusted click and Chrome audio permission.')">Test sound</button></div>
