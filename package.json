@@ -9,7 +9,11 @@
   "scripts": {
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
-    "build": "pnpm -r --if-present build"
+    "build": "pnpm -r --if-present build",
+    "build:ext": "pnpm --filter @resist/extension build",
+    "watch:ext": "pnpm --filter @resist/extension watch",
+    "dev:shop": "pnpm --filter @resist/mock-shop dev",
+    "dev:backend": "pnpm --filter @resist/backend dev"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
