@@ -1,0 +1,31 @@
+{
+  "name": "pocket-bloub",
+  "version": "1.1.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "postinstall": "wxt prepare",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "shop": "vite mock-shop --host 127.0.0.1 --port 5173 --strictPort",
+    "test:extension": "node scripts/verify-build.mjs",
+    "preview:artifacts": "node scripts/render-previews.mjs"
+  },
+  "dependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@wxt-dev/module-vue": "^1.0.0",
+    "wxt": "^0.21.5",
+    "typescript": "^5.9.0",
+    "vue-tsc": "^3.1.0",
+    "vitest": "^5.1.0",
+    "happy-dom": "^21.0.4",
+    "@vue/test-utils": "^2.4.6",
+    "@types/node": "^24.0.0",
+    "@vitejs/plugin-vue": "^6.0.0"
+  }
+}
