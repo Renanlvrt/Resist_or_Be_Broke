@@ -7,6 +7,9 @@ import search, {
   acceptLine,
   buildQuery,
   cachedResult,
+  cleanTitle,
+  firstPrice,
+  isListingPage,
   isSameModel,
   modelName,
   pickCheapest,
@@ -110,59 +113,116 @@ test('route: no keys -> cache for the demo product, not found for others', async
   }
 });
 
-test('route: live path (mocked Firecrawl + Claude) returns the cheapest valid match', async () => {
-  process.env.FIRECRAWL_API_KEY = 'test';
-  process.env.ANTHROPIC_API_KEY = 'test';
+// Mock of Firecrawl (search -> titles only, scrape -> markdown) and, optionally, Claude.
+function mockApis(claude: 'ok' | 'fail') {
   const realFetch = globalThis.fetch;
-  const seen: { firecrawl?: any; claude?: any } = {};
+  const seen: { search?: any; scraped: string[]; claude?: any } = { scraped: [] };
+  const pages: Record<string, string> = {
+    'https://www.sportsdirect.com/nike-pegasus-41-road-running-shoes-mens-210014': '# Nike Pegasus 41\n£69.00\nWas £129.99',
+    'https://www.jdsports.co.uk/product/nike-pegasus-41/1': '# Nike Pegasus 41\n£104.99',
+  };
   globalThis.fetch = (async (input: any, init?: any) => {
     const url = String(input instanceof Request ? input.url : input);
-    if (url.startsWith('https://api.firecrawl.dev/v2/search')) {
-      seen.firecrawl = JSON.parse(init.body);
+    if (url === 'https://api.firecrawl.dev/v2/search') {
+      seen.search = JSON.parse(init.body);
       return Response.json({
         success: true,
         data: {
           web: [
-            { url: 'https://www.jdsports.co.uk/product/pegasus-41/1', title: 'Nike Pegasus 41 | JD Sports', markdown: 'Nike Pegasus 41 £104.99' },
-            { url: 'https://www.sportsshoes.com/product/nike/pegasus-41/2', title: 'Nike Pegasus 41 | SportsShoes', markdown: 'Nike Pegasus 41 now £99.99 was £119.99' },
-            { url: 'https://www.nike.com/us/t/pegasus-41', title: 'Nike Pegasus 41 US', markdown: '$90' },
+            { url: 'https://www.nike.com/gb/t/pegasus-41-by-you-custom-road-running-shoes-dzzPLS', title: 'Nike Pegasus 41 By You Custom Road Running Shoes (Wide)' },
+            { url: 'https://www.sportsdirect.com/nike-pegasus-41-road-running-shoes-mens-210014', title: 'Nike | Pegasus 41 Road Running Shoes Mens - Sports Direct' },
+            { url: 'https://www.sportsshoes.com/product/nik23480/nike-air-zoom-pegasus-41-gore-tex-running-shoes', title: 'Nike Air Zoom Pegasus 41 GORE-TEX Running Shoes' },
+            { url: 'https://www.nike.com/gb/w/pegasus-running-shoes-37v7jz8nexhzy7ok', title: 'Pegasus Running Shoes & Trainers - Nike' },
+            { url: 'https://www.jdsports.co.uk/product/nike-pegasus-41/1', title: 'Nike Pegasus 41 | JD Sports' },
           ],
         },
       });
     }
+    if (url === 'https://api.firecrawl.dev/v2/scrape') {
+      const { url: page } = JSON.parse(init.body);
+      seen.scraped.push(page);
+      return Response.json({ success: true, data: { markdown: pages[page] ?? '' } });
+    }
     if (url.startsWith('https://api.anthropic.com/v1/messages')) {
       seen.claude = JSON.parse(init.body);
+      if (claude === 'fail') return new Response('{}', { status: 401 });
+      const sd = seen.claude.messages[0].content.includes('page 0: Sports Direct') ? 0 : 1;
       const text = JSON.stringify({
         offers: [
-          { page: 0, title: 'Nike Pegasus 41', price: 104.99 },
-          { page: 1, title: 'Nike Pegasus 41', price: 99.99 },
+          { page: sd, title: 'Nike Pegasus 41 Road Running Shoes Mens', price: 69 },
+          { page: 1 - sd, title: 'Nike Pegasus 41', price: 104.99 },
         ],
-        best: 1,
-        spokenLine: 'Same Pegasus 41 is £20 cheaper at SportsShoes.',
+        best: sd,
+        spokenLine: 'Same Pegasus 41 is £50.99 cheaper at Sports Direct.',
       });
       return Response.json({ content: [{ type: 'text', text }] });
     }
     return realFetch(input, init);
   }) as typeof fetch;
+  process.env.FIRECRAWL_API_KEY = 'test';
+  process.env.ANTHROPIC_API_KEY = 'test';
+  return {
+    seen,
+    restore() {
+      globalThis.fetch = realFetch;
+      delete process.env.FIRECRAWL_API_KEY;
+      delete process.env.ANTHROPIC_API_KEY;
+    },
+  };
+}
+
+test('price parser and title cleanup', () => {
+  assert.equal(firstPrice('# Nike Pegasus 41\n£69.00\nWas £129.99'), 69);
+  assert.equal(firstPrice('Delivery £0 · now £1,049.99'), 1049.99);
+  assert.equal(firstPrice('no price here'), null);
+  // real Firecrawl results for "Nike Air Max 90" were all listings: the parser must skip them
+  assert.ok(isListingPage('https://www.nike.com/gb/w/mens-air-max-90-shoes-auqmoznik1zy7ok'));
+  assert.ok(isListingPage('https://www.jdsports.co.uk/collection/nike-air-max-90/'));
+  assert.ok(isListingPage('https://www.sportsdirect.com/nike/nike-footwear/nike-trainers/nike-air-max-90'));
+  assert.ok(!isListingPage('https://www.sportsdirect.com/nike-pegasus-41-road-running-shoes-mens-210014'));
+  assert.ok(!isListingPage('https://www.jdsports.co.uk/product/nike-pegasus-41/1'));
+  assert.equal(cleanTitle('Nike | Pegasus 41 Road Running Shoes Mens - Sports Direct'), 'Nike Pegasus 41 Road Running Shoes Mens');
+});
+
+test('route: live path scrapes only same-model candidates; Claude picks the cheapest', async () => {
+  const m = mockApis('ok');
   try {
     await withServer(async (base) => {
       const r = await (await post(base, { product: demo })).json();
       assert.equal(r.found, true);
       assert.equal(r.cached, false);
-      assert.equal(r.alternative.price, 99.99);
-      assert.equal(r.alternative.retailer, 'SportsShoes');
-      assert.equal(r.alternative.url, 'https://www.sportsshoes.com/product/nike/pegasus-41/2');
-      assert.equal(r.savings, 20);
-      assert.equal(r.spokenLine, 'Same Pegasus 41 is £20 cheaper at SportsShoes.');
+      assert.equal(r.alternative.price, 69);
+      assert.equal(r.alternative.retailer, 'Sports Direct');
+      assert.equal(r.alternative.url, 'https://www.sportsdirect.com/nike-pegasus-41-road-running-shoes-mens-210014');
+      assert.equal(r.savings, 50.99);
+      assert.equal(r.spokenLine, 'Same Pegasus 41 is £50.99 cheaper at Sports Direct.');
     });
-    assert.equal(seen.firecrawl.query, 'Nike Pegasus 41');
-    assert.equal(seen.firecrawl.country, 'GB');
-    assert.ok(seen.firecrawl.includeDomains.includes('sportsshoes.com'));
+    assert.equal(m.seen.search.query, 'Nike Pegasus 41');
+    assert.equal(m.seen.search.country, 'GB');
+    assert.equal(m.seen.search.scrapeOptions, undefined, 'search must not scrape (17 s cold)');
+    // By You, GORE-TEX and the category page are never scraped
+    assert.deepEqual(m.seen.scraped.sort(), [
+      'https://www.jdsports.co.uk/product/nike-pegasus-41/1',
+      'https://www.sportsdirect.com/nike-pegasus-41-road-running-shoes-mens-210014',
+    ]);
     // privacy: Claude sees the product and page text only, never a budget/profile
-    assert.ok(!JSON.stringify(seen.claude).match(/monthlyBudget|savedByKeepHard|categories/));
+    assert.ok(!JSON.stringify(m.seen.claude).match(/monthlyBudget|savedByKeepHard|categories/));
   } finally {
-    globalThis.fetch = realFetch;
-    delete process.env.FIRECRAWL_API_KEY;
-    delete process.env.ANTHROPIC_API_KEY;
+    m.restore();
+  }
+});
+
+test('route: Claude down -> price parser still finds the live match, template line', async () => {
+  const m = mockApis('fail');
+  try {
+    await withServer(async (base) => {
+      const r = await (await post(base, { product: demo })).json();
+      assert.equal(r.cached, false);
+      assert.equal(r.alternative.price, 69);
+      assert.equal(r.alternative.title, 'Nike Pegasus 41 Road Running Shoes Mens');
+      assert.equal(r.spokenLine, 'If you really need them, the exact same Nike Pegasus 41 is £50.99 cheaper at Sports Direct.');
+    });
+  } finally {
+    m.restore();
   }
 });

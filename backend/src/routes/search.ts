@@ -13,7 +13,10 @@ import type { Product, SearchResult } from '../../../packages/shared/types.js';
 
 /** Whole request budget; past this we answer from the cache (demo product) or "not found". */
 export const BUDGET_MS = 6000;
-const FIRECRAWL_MS = 4000;
+const SEARCH_MS = 2000;
+const SCRAPE_MS = 3500;
+const CLAUDE_RESERVE_MS = 2000;
+const MAX_CANDIDATES = 3;
 const PAGE_CHARS = 2500;
 
 /** Named UK retailers only. Amazon is where the user already is, so it's never an "alternative". */
@@ -147,30 +150,77 @@ interface Page {
   markdown: string;
 }
 
-async function firecrawlSearch(query: string): Promise<Page[]> {
+const firecrawl = async (endpoint: 'search' | 'scrape', body: object, timeoutMs: number): Promise<any> => {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) throw new Error('no FIRECRAWL_API_KEY');
-  const r = await fetch('https://api.firecrawl.dev/v2/search', {
+  const r = await fetch(`https://api.firecrawl.dev/v2/${endpoint}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      query,
-      limit: 5,
-      sources: ['web'],
-      includeDomains: RETAILERS.map((r) => r.host),
-      country: 'GB',
-      timeout: FIRECRAWL_MS - 500,
-      // Pages Firecrawl indexed in the last 2 days are served from its cache: much faster than a fresh scrape.
-      scrapeOptions: { formats: ['markdown'], onlyMainContent: true, maxAge: 172_800_000 },
-    }),
-    signal: AbortSignal.timeout(FIRECRAWL_MS),
+    body: JSON.stringify({ ...body, timeout: Math.max(1000, timeoutMs - 300) }),
+    signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!r.ok) throw new Error(`firecrawl ${r.status}`);
-  const j: any = await r.json();
+  if (!r.ok) throw new Error(`firecrawl ${endpoint} ${r.status}`);
+  return r.json();
+};
+
+/**
+ * Step 1: search WITHOUT scraping (~0.4 s; search+scrape of 5 results measured 17 s cold).
+ * Keep only allowed UK retailers whose result title is the same model (drops GORE-TEX, "By You",
+ * category pages) so we only pay to scrape real candidates.
+ */
+export async function findCandidates(product: Product): Promise<{ url: string; title: string }[]> {
+  const j = await firecrawl(
+    'search',
+    { query: buildQuery(product), limit: 5, sources: ['web'], includeDomains: RETAILERS.map((r) => r.host), country: 'GB' },
+    SEARCH_MS,
+  );
+  const model = modelName(product);
+  const code = productCode(product.title);
   const web: any[] = j?.data?.web ?? [];
   return web
-    .filter((w) => typeof w?.url === 'string' && retailerFor(w.url))
-    .map((w) => ({ url: w.url, title: String(w.title ?? w.metadata?.title ?? ''), markdown: String(w.markdown ?? w.description ?? '') }));
+    .map((w) => ({ url: String(w?.url ?? ''), title: String(w?.title ?? '') }))
+    .filter((w) => retailerFor(w.url) && isSameModel(w.title, model, code, product.title))
+    .slice(0, MAX_CANDIDATES);
+}
+
+/** Step 2: scrape the candidates in parallel. maxAge lets Firecrawl serve pages it saw in the last 2 days (~0.2 s). */
+async function scrapePages(cands: { url: string; title: string }[], timeoutMs: number): Promise<{ pages: Page[]; errors: string[] }> {
+  const settled = await Promise.allSettled(
+    cands.map((c) =>
+      firecrawl('scrape', { url: c.url, formats: ['markdown'], onlyMainContent: true, maxAge: 172_800_000 }, timeoutMs).then(
+        (j): Page => ({ url: c.url, title: c.title, markdown: String(j?.data?.markdown ?? '') }),
+      ),
+    ),
+  );
+  return {
+    pages: settled.flatMap((s) => (s.status === 'fulfilled' && s.value.markdown ? [s.value] : [])),
+    errors: settled.flatMap((s) => (s.status === 'rejected' ? [String(s.reason?.message ?? s.reason)] : [])),
+  };
+}
+
+/** Category/search/listing pages (many products on one page): only Claude may read prices from these. */
+export function isListingPage(url: string): boolean {
+  try {
+    const { hostname, pathname } = new URL(url);
+    if (/\/(w|collection|collections|search|c|browse)\//i.test(pathname)) return true;
+    // Sports Direct product pages are one segment ending in an id: /nike-pegasus-41-road-running-shoes-mens-210014
+    return hostname.endsWith('sportsdirect.com') && !/^\/[^/]+-\d+\/?$/.test(pathname);
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Fallback when Claude is slow or unavailable: on a product page the first £ amount in the main
+ * content is the current price (e.g. Sports Direct: "£69.00" before "was £129.99"). Only used on
+ * pages that already passed the same-model title check.
+ */
+export function firstPrice(markdown: string): number | null {
+  for (const m of markdown.matchAll(/£\s?(\d{1,4}(?:,\d{3})*(?:\.\d{2})?)/g)) {
+    const n = Number(m[1]!.replace(/,/g, ''));
+    if (n > 0) return n;
+  }
+  return null;
 }
 
 const ClaudeOut = z.object({
@@ -196,28 +246,52 @@ async function claudeExtract(product: Product, model: string, pages: Page[], tim
   return ClaudeOut.parse(extractJson(await askClaude(SYSTEM, user, timeoutMs, 600)));
 }
 
-export async function liveSearch(product: Product, deadline: number): Promise<SearchResult | null> {
+export async function liveSearch(product: Product, deadline: number): Promise<{ result: SearchResult | null; note: string }> {
   const model = modelName(product);
-  const pages = await firecrawlSearch(buildQuery(product));
-  if (!pages.length) return null;
-  const out = await claudeExtract(product, model, pages, Math.max(500, deadline - Date.now()));
+  const left = () => deadline - Date.now();
+  const cands = await findCandidates(product);
+  if (!cands.length) return { result: null, note: 'no same-model candidates' };
+  const { pages, errors } = await scrapePages(cands, Math.min(SCRAPE_MS, Math.max(1000, left() - CLAUDE_RESERVE_MS)));
+  if (!pages.length) return { result: null, note: `scrape failed (${errors.join('; ') || 'empty pages'})` };
+
+  let out: z.infer<typeof ClaudeOut> | null = null;
+  let note = 'claude';
+  try {
+    out = await claudeExtract(product, model, pages, Math.max(500, left()));
+  } catch (e: any) {
+    note = `no claude (${String(e?.message ?? e)}), price parser`;
+  }
   // URLs always come from Firecrawl's results by page index, never from the model.
-  const offers: Offer[] = out.offers.flatMap((o) => {
-    const p = pages[o.page];
-    const retailer = p && retailerFor(p.url);
-    return p && retailer && o.price !== null ? [{ title: o.title, price: o.price, url: p.url, retailer }] : [];
-  });
+  const offers: Offer[] = out
+    ? out.offers.flatMap((o) => {
+        const p = pages[o.page];
+        const retailer = p && retailerFor(p.url);
+        return p && retailer && o.price !== null ? [{ title: o.title, price: o.price, url: p.url, retailer }] : [];
+      })
+    : pages.flatMap((p) => {
+        if (isListingPage(p.url)) return []; // first £ on a listing could be a different shoe
+        const price = firstPrice(p.markdown);
+        return price !== null ? [{ title: p.title, price, url: p.url, retailer: retailerFor(p.url)! }] : [];
+      });
   const best = pickCheapest(offers, product);
-  if (!best) return null;
+  if (!best) return { result: null, note: `${note}, nothing cheaper` };
   const savings = round2(product.price - best.price);
-  const claudePickedSame = out.best !== undefined && out.best !== null && pages[out.best]?.url === best.url;
+  const claudePickedSame = !!out && out.best !== undefined && out.best !== null && pages[out.best]?.url === best.url;
   return {
-    found: true,
-    alternative: { title: best.title, brand: product.brand, price: best.price, url: best.url, retailer: best.retailer, sameModel: true },
-    savings,
-    spokenLine: claudePickedSame && acceptLine(out.spokenLine, savings, best.price) ? out.spokenLine! : templateLine(model, savings, best.retailer),
-    cached: false,
+    note,
+    result: {
+      found: true,
+      alternative: { title: cleanTitle(best.title), brand: product.brand, price: best.price, url: best.url, retailer: best.retailer, sameModel: true },
+      savings,
+      spokenLine: claudePickedSame && acceptLine(out!.spokenLine, savings, best.price) ? out!.spokenLine! : templateLine(model, savings, best.retailer),
+      cached: false,
+    },
   };
+}
+
+/** "Nike | Pegasus 41 Road Running Shoes Mens - Sports Direct" -> "Nike Pegasus 41 Road Running Shoes Mens" */
+export function cleanTitle(t: string): string {
+  return t.replace(/\s*[-|]\s*(Sports Direct|JD Sports|Foot Locker.*|SportsShoes.*|Nike( UK| GB)?|eBay)\s*$/i, '').replace(/\s*\|\s*/g, ' ').trim();
 }
 
 /** Live within the budget; on timeout, error, missing keys or no match: cache (demo product) or not found. */
@@ -230,7 +304,8 @@ export async function findCheaper(product: Product): Promise<{ result: SearchRes
       liveSearch(product, deadline - 300),
       new Promise<never>((_, rej) => (timer = setTimeout(() => rej(new Error('timeout')), BUDGET_MS))),
     ]);
-    if (live) return { result: live, reason: 'live' };
+    if (live.result) return { result: live.result, reason: live.note };
+    reason = live.note;
   } catch (e: any) {
     reason = String(e?.message ?? e);
   } finally {
