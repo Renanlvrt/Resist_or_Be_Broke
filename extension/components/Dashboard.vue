@@ -25,7 +25,7 @@ const projectionPath = Array.from({ length: 61 }, (_, index) => {
   return `${index ? 'L' : 'M'}${point.x.toFixed(2)},${point.y.toFixed(2)}`;
 }).join(' ');
 const avoided = [
-  { title: 'Running shoes', amount: 65 },
+  { title: 'Headphones', amount: 65 },
   { title: 'Gym bag', amount: 28 },
   { title: 'Coffee maker', amount: 38 },
 ];

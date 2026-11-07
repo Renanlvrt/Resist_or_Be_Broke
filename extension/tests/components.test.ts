@@ -97,7 +97,7 @@ describe('minimal monthly recap and existing check-in', () => {
     const w = mount(Dashboard);
     expect(w.get('[data-saved-amount]').text()).toBe('£131');
     expect(w.findAll('.recap-goals li').map(li => li.text())).toEqual(['Save for sports equipment', 'Spend less on takeaways', 'Build an emergency savings fund', 'No alcohol this month']);
-    expect(w.findAll('.receipt-avoided dl > div').map(row => row.text())).toEqual(['Running shoes£65', 'Gym bag£28', 'Coffee maker£38']);
+    expect(w.findAll('.receipt-avoided dl > div').map(row => row.text())).toEqual(['Headphones£65', 'Gym bag£28', 'Coffee maker£38']);
     expect(w.findAll('.receipt-bought dl > div').map(row => row.text())).toEqual(['Phone case£12']);
     const avoided = w.findAll('.receipt-avoided dd').map(node => Number(node.text().slice(1)));
     expect(avoided.reduce((sum, value) => sum + value, 0)).toBe(131);
