@@ -9,6 +9,7 @@ import Dashboard from './Dashboard.vue';
 import Onboarding from './Onboarding.vue';
 import VoiceLayer from '../keephard/VoiceLayer.vue'; // KEEPHARD
 import { useVoice } from '../keephard/useVoice'; // KEEPHARD
+import { kh } from '../keephard/store'; // KEEPHARD
 import { MascotController, MASCOT_ACTIONS } from '../lib/controller';
 import { MockFinanceProvider, money, scenarios, storage } from '../lib/finance';
 import { EXPRESSIONS, type ExpressionId } from '../bot/expressions';
@@ -51,18 +52,25 @@ async function action(type:MascotAction){cancelWork();cancelAmazon();await contr
 function openDashboard(){leaveCorner(false);cancelWork();cancelAmazon();onboarding.value=false;void controller.dispatch({type:'OPEN_DASHBOARD'});}
 function closeDashboard(){void action('CLOSE_DASHBOARD');}
 function enterCorner(){
-  if(voice.active()||hovering||scene.dashboard||onboarding.value||scene.dialogue||busy.value)return; // KEEPHARD: no dashboard hover while voice is live
+  if(kh.active||hovering||scene.dashboard||onboarding.value||scene.dialogue||busy.value)return; // KEEPHARD: no dashboard hover while voice is live
   hovering=true;void controller.dispatch({type:'PEEK'});
   hoverTimer=setTimeout(()=>{hovering=false;openDashboard();},1250);
 }
-function leaveCorner(exit=true){clearTimeout(hoverTimer);const wasHovering=hovering;hovering=false;pointerInside=false;if(exit&&wasHovering&&!scene.dashboard&&!scene.dialogue&&!busy.value)void controller.dispatch({type:'DISMISS'});}
+function leaveCorner(exit=true){clearTimeout(hoverTimer);clearTimeout(leaveTimer);const wasHovering=hovering;hovering=false;pointerInside=false;if(exit&&wasHovering&&!scene.dashboard&&!scene.dialogue&&!busy.value)void controller.dispatch({type:'DISMISS'});}
+// KEEPHARD: easier corner. Bigger zone (140px in, 200px out: no flicker at the edge), measured without the scrollbar,
+// and a short grace so slipping off the screen edge / over the scrollbar for a moment does not cancel the hover.
+let leaveTimer:ReturnType<typeof setTimeout>|undefined;
+const CORNER_IN=140,CORNER_OUT=200;
+function softLeave(){clearTimeout(leaveTimer);leaveTimer=setTimeout(()=>leaveCorner(),350);}
 function hotspotPointer(event:PointerEvent){
   if(event.pointerType==='touch')return;
-  const inside=event.clientX>=window.innerWidth-80&&event.clientY>=window.innerHeight-80;
-  if(inside&&!pointerInside){pointerInside=true;enterCorner();}
-  else if(!inside&&pointerInside)leaveCorner();
+  const w=document.documentElement.clientWidth||window.innerWidth,h=document.documentElement.clientHeight||window.innerHeight;
+  const zone=pointerInside?CORNER_OUT:CORNER_IN;
+  const inside=event.clientX>=w-zone&&event.clientY>=h-zone;
+  if(inside){clearTimeout(leaveTimer);if(!pointerInside){enterCorner();pointerInside=hovering;}}// blocked (e.g. voice live)? retry on the next move
+  else if(pointerInside)softLeave();
 }
-function viewportLeave(event:PointerEvent){if(event.target===document||event.relatedTarget===null)leaveCorner();}
+function viewportLeave(event:PointerEvent){if(event.target===document||event.relatedTarget===null)softLeave();}
 function gesture(event:Event){void sound.unlock(event.isTrusted);}
 function onMessage(message:unknown){if(message&&typeof message==='object'&&'type' in message&&message.type==='POCKET_OPEN_LAB'){panel.value=true;return Promise.resolve({ok:true});}return false;}
 function soundChange(changes:Record<string,{newValue?:unknown}>,area:string){if(area==='local'&&'pocket-sound-muted' in changes)sound.setMuted(changes['pocket-sound-muted']?.newValue===true,false);}
