@@ -1,0 +1,30 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+import type { UserProfile } from '../lib/contracts';
+const props=defineProps<{profile:UserProfile}>();
+const emit=defineEmits<{save:[profile:UserProfile];close:[];question:[]}>();
+const draft=ref<UserProfile>(JSON.parse(JSON.stringify(props.profile)));
+const step=ref(0);const error=ref('');const voice=ref(false);
+const titles=['First, a little about today.','What’s already spoken for?','What are we making room for?','Where would you like a little pause?','Any promises to yourself?','When does “add to basket” happen?','How should I sound?'];
+const hints=['Your balance, next income and when it arrives.','Add the fixed payments due before your next income.','Something meaningful to save towards.','The categories you’d like to spend a little less on.','Your own words. You can always change your mind.','A little self-awareness goes a long way.','Helpful should feel like you.'];
+function valid(){const p=draft.value;return p.name.trim()&&Number.isFinite(p.balance)&&p.balance>=0&&p.income>0&&p.incomeDate>'2026-11-07'&&p.goal.title.trim()&&p.goal.target>0&&p.goal.saved>=0&&p.goal.saved<=p.goal.target&&p.goal.targetDate>='2026-11-07'&&p.expenses.every(e=>e.title.trim()&&e.amount>=0&&e.date>='2026-11-07'&&e.date<p.incomeDate)&&p.rules.every(r=>r.text.trim());}
+function next(){if(!valid()){error.value='Check amounts, goal progress, and dates. Fixed payments must fall before your next income, after 7 November 2026 (the demo date).';return;}error.value='';if(step.value<7){step.value++;emit('question');}else emit('save',draft.value);}
+</script>
+<template>
+  <section class="onboarding modal-surface" role="dialog" aria-modal="true" aria-labelledby="interview-title">
+    <header><a class="brand"><span class="brand-hex">p</span> pocket.</a><span class="demo-pill">MONTHLY CHECK-IN · DEMO</span><button class="icon-button" aria-label="Close check-in" @click="emit('close')">✕</button></header>
+    <div class="onboarding-content"><div class="eyebrow">{{step<7?`QUESTION ${step+1} OF 7`:'LOOKS LIKE A PLAN'}}</div><h1 id="interview-title">{{titles[step] || 'A little plan, just for you.'}}</h1><p>{{hints[step] || 'Everything here is editable. This demo saves your profile only on this device.'}}</p>
+      <div class="interview-fields" :key="step">
+        <template v-if="step===0||step===7"><h3 v-if="step===7">Your starting point</h3><label>Your first name<input v-model="draft.name" maxlength="30"></label><div class="field-pair"><label>Current balance (£)<input v-model.number="draft.balance" type="number" min="0" step="0.01"></label><label>Next income (£)<input v-model.number="draft.income" type="number" min="1" step="0.01"></label></div><label>Next income date<input v-model="draft.incomeDate" type="date" min="2026-11-08"></label></template>
+        <template v-if="step===1||step===7"><h3 v-if="step===7">Fixed expenses</h3><div v-for="(e,i) in draft.expenses" :key="i" class="expense-edit"><label>Payment<input v-model="e.title" placeholder="Rent"></label><label>Amount (£)<input v-model.number="e.amount" type="number" min="0"></label><label>Due<input v-model="e.date" type="date"></label><button class="icon-button" aria-label="Remove expense" @click="draft.expenses.splice(i,1)">−</button></div><button class="text-button" @click="draft.expenses.push({title:'New payment',amount:0,date:'2026-11-14'})">+ Add a payment</button></template>
+        <template v-if="step===2||step===7"><h3 v-if="step===7">Your bigger picture</h3><label>I'm saving for…<input v-model="draft.goal.title"></label><div class="field-pair"><label>Target (£)<input v-model.number="draft.goal.target" type="number" min="1"></label><label>Already saved (£)<input v-model.number="draft.goal.saved" type="number" min="0"></label></div><label>Target date<input v-model="draft.goal.targetDate" type="date"></label></template>
+        <template v-if="step===3||step===7"><label>I'd like to spend less on…<textarea v-model="draft.priorities" placeholder="Takeaways, clothes, little impulse buys…"></textarea></label></template>
+        <template v-if="step===4||step===7"><div v-for="(r,i) in draft.rules" :key="r.id" class="rule-edit"><label>My promise<input v-model="r.text"></label><label>Applies to<select v-model="r.category"><option value="all">Purchases £50+</option><option value="alcohol">Alcohol</option><option value="clothing">Clothing</option><option value="electronics">Electronics</option><option value="stationery">Stationery</option></select></label><button class="icon-button" aria-label="Remove promise" @click="draft.rules.splice(i,1)">−</button></div><button class="text-button" @click="draft.rules.push({id:'rule-'+Date.now(),text:'My new promise',category:'all',enabled:true})">+ Add a promise</button><p class="small-note">Mock evaluation uses category promises for red, and £50+ promises for amber. Free text is displayed as written; no AI interprets it.</p></template>
+        <template v-if="step===5||step===7"><label>I tend to buy on impulse when…<textarea v-model="draft.impulseHabits"></textarea></label></template>
+        <template v-if="step===6||step===7"><label>My preferred tone<select v-model="draft.tone"><option>Warm, a little playful</option><option>Gentle and encouraging</option><option>Direct and practical</option></select></label><div class="tone-preview">“Your call, always. I’m just here for the little pause.”</div></template>
+      </div>
+      <p v-if="error" role="alert" class="error-message">{{error}}</p><p v-if="voice" class="small-note" role="status">Voice is a development placeholder. Please type your answer; no microphone or voice API is connected.</p>
+    </div>
+    <footer><button class="quiet-button" @click="voice=!voice">♩ Voice preview · mocked</button><div><button v-if="step>0" class="quiet-button" @click="step--;emit('question')">Back</button><button class="primary-button" @click="next">{{step===7?'Confirm my plan':step===6?'Review my plan':'Next'}} <span>→</span></button></div></footer>
+  </section>
+</template>
