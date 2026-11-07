@@ -15,6 +15,7 @@ const lines = [
   'Fresh month, fresh start. Every pound you keep gets you closer to your flight home.',
   "I couldn't hear you. Type your reason instead.",
   "I'm having trouble connecting. You can type your reason below.",
+  'Nothing cheaper out there. Your call.', 'Hunted everywhere. That is the best price. Your call.', 'No better deal. Your call, not mine.',
   'Hello!!!!', 'Hellooo? Anyone there?', 'Earth to Sam! Are you still with me?', 'Hey! Still there?', 'Come on, talk to me!',
 ];
 const alts = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/shared/demo-alternatives.json'), 'utf8'));

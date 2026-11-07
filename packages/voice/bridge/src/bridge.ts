@@ -118,15 +118,43 @@ async function sayLine(text: string, state: string) {
 }
 
 // Search only (no speech, no persistence). Emits keephard:searchresult {result} or {error}.
+const SEARCH_TIMEOUT_MS = 8000;
+const NOT_FOUND_LINES = ['Nothing cheaper out there. Your call.', 'Hunted everywhere. That is the best price. Your call.', 'No better deal. Your call, not mine.'];
+let nfIdx = Math.floor(Math.random() * NOT_FOUND_LINES.length);
+let closeT: any;
+
+/** fully close everything: timers, mic/session, bubble, card, toast */
+function closeAll(why: string) {
+  clearTimeout(closeT); clearTimers(); stop(); offerGen++;
+  ui?.dismiss(); emit('state', { state: 'idle' }); emit('idle', { why });
+}
+
+/** not found / search failed: one dry line, neutral avatar, then auto-close */
+async function endNotFound(why: string) {
+  offerGen++;
+  const line = NOT_FOUND_LINES[nfIdx++ % NOT_FOUND_LINES.length];
+  clearTimeout(closeT);
+  closeT = setTimeout(() => closeAll('notfound hard cap'), 14000);
+  try { stop(); ui?.hideOffer(); ui?.peek(true); ui?.state('idle'); emit('state', { state: 'idle' }); emit('caption', { text: line, who: 'avatar' }); ui?.caption(line, 'avatar'); ui?.scheduleHide(60000); } catch { /* ignore */ }
+  try { await Promise.race([sayLine(line, 'idle'), new Promise((r) => setTimeout(r, 5000))]); } catch (e) { console.warn('[keephard] say failed', e); }
+  try { ui?.state('idle'); } catch { /* ignore */ }
+  clearTimeout(closeT);
+  ui?.fadeOut(4000);
+  closeT = setTimeout(() => closeAll(why), 4400);
+}
+
 async function doSearch(product: any, demo?: boolean) {
   try {
-    const result = await runSearch(product, demo);
+    const result = await Promise.race([
+      runSearch(product, demo),
+      new Promise<never>((_, rej) => setTimeout(() => rej(new Error('search timed out')), SEARCH_TIMEOUT_MS)),
+    ]);
     emit('searchresult', { result });
     ui?.result(result);
     return result;
   } catch (e) {
     emit('searchresult', { error: String((e as any)?.message || e) });
-    ui?.error('Search failed: ' + String((e as any)?.message || e));
+    console.warn('[keephard] search failed', e);
     return undefined;
   }
 }
@@ -160,10 +188,13 @@ function safeHttp(u: any): string | undefined {
 async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogation, verdict?: string) {
   if (chainBusy) return;
   chainBusy = true;
+  let shown = false;
+  const wd = setTimeout(() => { if (!shown) closeAll('verdict watchdog'); }, 15000);
   try {
-    if (s) { await s.agentDone(); s.endVoice(); } // one speaking voice at a time; mic off after the verdict
+    if (s) { try { await Promise.race([s.agentDone(), new Promise((r) => setTimeout(r, 6000))]); s.endVoice(); } catch { /* ignore */ } } // one speaking voice at a time; mic off after the verdict
     const result = await doSearch(product, demo);
-    if (!result || !result.found || !result.alternative) { ui?.hideOffer(); return; }
+    if (!result || !result.found || !result.alternative) { shown = true; clearTimeout(wd); await endNotFound(result ? 'not found' : 'search failed'); return; }
+    shown = true; clearTimeout(wd);
     const gen = ++offerGen;
     const alt = result.alternative;
     const url = safeHttp(alt.url);
@@ -172,7 +203,7 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
       if (settled || gen !== offerGen) return;
       settled = true; offerGen++; stop();
       ui?.hideOffer();
-      if (!url) { ui?.error('Cheaper pair link is not a valid http(s) URL.'); return; }
+      if (!url) { await endNotFound('bad url'); return; }
       const amount = Number(result.savings) || 0;
       if (amount > 0) {
         const { entry, total } = await recordSavings(amount, `${alt.title} @ ${alt.retailer}`);
@@ -190,7 +221,8 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
     } else emit('state', { state: 'happy' });
     if (autoRedirect && url && !settled && gen === offerGen) ui?.countdown(3, () => void go(), cancel);
     else if (!settled) stop(); // card only: voice session fully closed
-  } finally { chainBusy = false; }
+  } catch (e) { console.warn('[keephard] offer beat failed', e); if (!shown) { shown = true; clearTimeout(wd); await endNotFound('error'); } }
+  finally { clearTimeout(wd); chainBusy = false; }
 }
 
 function stop() {
@@ -411,7 +443,7 @@ class Panel {
     this.res = q('.res'); this.offerEl = q('.offer');
     this.peekEl = q('.peek'); this.pcap = q('.pcap'); this.pme = q('.pme'); this.av = q('.av');
     this.ptyped = q('.ptyped'); this.tapEl = q('.tap');
-    q('.px').addEventListener('click', () => { stop(); this.peek(false); });
+    q('.px').addEventListener('click', () => closeAll('user closed'));
     const pin = q('.ptyped input') as HTMLInputElement;
     const psend = () => { const t = pin.value.trim(); if (t && session) { pin.value = ''; void session.submitTyped(t); } };
     q('.ptyped button').addEventListener('click', psend);
@@ -456,7 +488,7 @@ class Panel {
   result(r: any) {
     this.panel.classList.add('open');
     this.res.textContent = '';
-    if (!r || !r.found || !r.alternative) { this.res.classList.remove('open'); this.caption('No cheaper option found.', 'avatar'); return; }
+    if (!r || !r.found || !r.alternative) { this.res.classList.remove('open'); return; }
     const a = r.alternative;
     const lines = [a.title, 'Retailer: ' + a.retailer, 'Price: £' + Number(a.price).toFixed(2), 'You save: £' + Number(r.savings).toFixed(2)];
     lines.forEach((t, i) => { const d = document.createElement('div'); d.textContent = t; if (i === 0 || i === 3) d.style.fontWeight = '700'; this.res.appendChild(d); });
@@ -489,11 +521,23 @@ class Panel {
     this.peekEl.classList.remove('open');
     this.offerEl.classList.add('open');
   }
+  /** fade the bubble out over ms (closeAll finishes the job) */
+  fadeOut(ms: number) { this.peekEl.style.transition = 'opacity ' + Math.min(ms, 800) + 'ms ease ' + Math.max(0, ms - 800) + 'ms'; this.peekEl.style.opacity = '0'; }
+  /** remove every visible surface */
+  dismiss() {
+    clearTimeout(this.hideT); this.hideT = undefined; this.hideOffer();
+    this.peek(false); this.peekEl.style.transition = ''; this.peekEl.style.opacity = '';
+    this.panel.classList.remove('open'); this.res.classList.remove('open'); this.err.style.display = 'none';
+    this.tapEl.classList.remove('open'); this.typed.classList.remove('open');
+    const t = this.root.querySelector('.toast') as HTMLElement; t?.classList.remove('open');
+    this.state('idle');
+  }
   toast(t: string) { const el = this.root.querySelector('.toast') as HTMLElement; el.textContent = t; el.classList.add('open'); setTimeout(() => el.classList.remove('open'), 2200); }
   peek(on: boolean) {
     if (on) this.peekEl.classList.toggle('small', mascotPresent());
     const was = this.peekEl.classList.contains('open');
     this.peekEl.classList.toggle('open', on);
+    if (on) { this.peekEl.style.transition = ''; this.peekEl.style.opacity = ''; }
     if (on !== was) emit('peek', { on }); if (!on) { this.pcap.textContent = ''; this.pme.textContent = ''; this.ptyped.classList.remove('open'); } }
   hideTest() { (this.root.querySelector('.go') as HTMLElement).style.display = 'none'; (this.root.querySelector('.skip') as HTMLElement).style.display = 'none'; }
   tap(on: boolean) { this.tapEl.classList.toggle('open', on); }
