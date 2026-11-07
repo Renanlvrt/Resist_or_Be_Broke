@@ -4,8 +4,8 @@ import crypto from 'node:crypto';
 import { ROOT } from './env.js';
 
 export const TTS_DIR = path.join(ROOT, 'backend', 'cache', 'tts');
-export const MODEL_ID = 'eleven_flash_v2_5';
-export const VOICE_SETTINGS = { stability: 0.45, similarity_boost: 0.75, style: 0.1, use_speaker_boost: true };
+export const MODEL_ID = 'eleven_flash_v2'; // same model as the live agent so both sound identical
+export const VOICE_SETTINGS = { stability: 0.45, similarity_boost: 0.75 };
 export const voiceId = () => process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
 
 export function cachePath(text: string, voice = voiceId()): string {

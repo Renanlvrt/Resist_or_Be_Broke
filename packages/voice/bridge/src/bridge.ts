@@ -124,7 +124,7 @@ async function sayLine(text: string, state: string) {
 
 // Search only (no speech, no persistence). Emits keephard:searchresult {result} or {error}.
 const SEARCH_TIMEOUT_MS = 8000;
-const NOT_FOUND_LINES = ['Nothing cheaper out there. Your call.', 'Hunted everywhere. That is the best price. Your call.', 'No better deal. Your call, not mine.'];
+const NOT_FOUND_LINES = ['Looked everywhere. Not a penny cheaper, I am afraid.', 'Checked the lot. Nowt cheaper. Sorry, pal.', 'Had a proper look. That is as low as it goes.', 'Annoying, but this is the best price going.'];
 let nfIdx = Math.floor(Math.random() * NOT_FOUND_LINES.length);
 let closeT: any;
 

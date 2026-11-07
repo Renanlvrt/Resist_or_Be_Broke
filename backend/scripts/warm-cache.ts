@@ -16,7 +16,7 @@ const lines = [
   'Fresh month, fresh start. Every pound you keep gets you closer to your flight home.',
   "I couldn't hear you. Type your reason instead.",
   "I'm having trouble connecting. You can type your reason below.",
-  'Nothing cheaper out there. Your call.', 'Hunted everywhere. That is the best price. Your call.', 'No better deal. Your call, not mine.',
+  'Looked everywhere. Not a penny cheaper, I am afraid.', 'Checked the lot. Nowt cheaper. Sorry, pal.', 'Had a proper look. That is as low as it goes.', 'Annoying, but this is the best price going.',
   'Hello!!!!', 'Hellooo? Anyone there?', 'Earth to Sam! Are you still with me?', 'Hey! Still there?', 'Come on, talk to me!',
   'Go on.', 'Still there?', 'Right then. I am waiting.', 'Not like you, that. Go on.', 'Take your time. Not too much of it, mind.',
 ];

@@ -22,6 +22,7 @@ export const PREFETCH_BUDGET_MS = 15000;
 const MEMO_TTL_MS = 30 * 60_000;
 const SEARCH_MS = 2500;
 const MAX_SCRAPE_MS = 5000;
+const PREFETCH_SCRAPE_MS = 10000;
 const CLAUDE_RESERVE_MS = 3000;
 const CLAUDE_MIN_MS = 2500;
 const MAX_CANDIDATES = 5;
@@ -93,7 +94,7 @@ export function retailerFor(url: string): string | null {
 }
 
 /** Variant words that make a different product (seen in real results: "Pegasus 41 GORE-TEX", "By You" custom). */
-const VARIANTS = /\b(gore[\s-]?tex|gtx|trail|by you|premium|shield|flyease|wide|kids?|junior|gs|women'?s?|ladies|girls?)\b/gi;
+const VARIANTS = /\b(gore[\s-]?tex|gtx|trail|by you|premium|shield|flyease|wide|kids?|junior|gs|gts|easyon|women'?s?|ladies|girls?)\b/gi;
 
 /**
  * Same model = every word of the model name appears as a whole word (so "Pegasus 41" rejects
@@ -225,7 +226,6 @@ interface Page extends Cand { markdown: string }
 const firecrawl = async (endpoint: 'search' | 'scrape', body: object, timeoutMs: number): Promise<any> => {
   const key = process.env.FIRECRAWL_API_KEY;
   if (!key) throw new Error('no FIRECRAWL_API_KEY');
-  const t0 = Date.now();
   const call = (ms: number) =>
     fetch(`https://api.firecrawl.dev/v2/${endpoint}`, {
       method: 'POST',
@@ -233,12 +233,8 @@ const firecrawl = async (endpoint: 'search' | 'scrape', body: object, timeoutMs:
       body: JSON.stringify({ ...body, timeout: Math.max(1000, ms - 300) }),
       signal: AbortSignal.timeout(ms),
     });
-  let r = await call(timeoutMs);
-  // Firecrawl rate-limits bursts (429): one retry after a short pause, only if the budget allows it.
-  if (r.status === 429 && Date.now() - t0 < timeoutMs / 2) {
-    await new Promise((res) => setTimeout(res, 400));
-    r = await call(Math.max(1000, timeoutMs - (Date.now() - t0)));
-  }
+  // No retry on 429: retries double the burst that trips Firecrawl's per-minute limit. Errors are not memoised instead.
+  const r = await call(timeoutMs);
   if (!r.ok) throw new Error(`firecrawl ${endpoint} ${r.status}`);
   return r.json();
 };
@@ -276,7 +272,11 @@ export async function findCandidates(product: Product, colour?: string): Promise
   const settled = await Promise.allSettled(
     qs.map((q) => firecrawl('search', { query: q.query, limit: 5, sources: ['web'], includeDomains: RETAILERS.map((r) => r.host), country: 'GB' }, SEARCH_MS)),
   );
-  if (settled.every((s) => s.status === 'rejected')) throw (settled[0] as PromiseRejectedResult).reason;
+  const failed = settled.find((s): s is PromiseRejectedResult => s.status === 'rejected');
+  // All searches failed, or some failed and none of the rest found an exact match: an error, not
+  // "no candidates". Errors are not memoised, so the next call retries instead of caching a false "none".
+  const anyWeb = settled.some((s) => s.status === 'fulfilled' && (s.value?.data?.web?.length ?? 0) > 0);
+  if (failed && !anyWeb) throw failed.reason;
   const seen = new Set<string>();
   const found: Cand[] = [];
   settled.forEach((s, i) => {
@@ -397,7 +397,9 @@ export async function liveSearch(product: Product, deadline: number, colour?: st
   const left = () => deadline - Date.now();
   const cands = await findCandidates(product, colour);
   if (!cands.length) return { result: null, note: 'no same-model candidates' };
-  const { pages, errors } = await scrapePages(cands, Math.min(MAX_SCRAPE_MS, Math.max(1000, left() - CLAUDE_RESERVE_MS)));
+  // A prefetch has the long budget: let cold pages finish, so the real call later reads them from Firecrawl's cache.
+  const scrapeCap = left() > BUDGET_MS ? PREFETCH_SCRAPE_MS : MAX_SCRAPE_MS;
+  const { pages, errors } = await scrapePages(cands, Math.min(scrapeCap, Math.max(1000, left() - CLAUDE_RESERVE_MS)));
   if (!pages.length) return { result: null, note: `scrape failed (${errors.join('; ') || 'empty pages'})` };
 
   let out: z.infer<typeof ClaudeOut> | null = null;

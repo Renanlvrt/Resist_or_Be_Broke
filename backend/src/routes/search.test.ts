@@ -51,6 +51,10 @@ test('same model: version numbers and codes must match', () => {
   assert.ok(!isSameModel('Nike Pegasus 41 By You Custom Road Running Shoes (Wide)', 'Nike Pegasus 41', null, 'Nike Pegasus 41 Running Shoes'));
   assert.ok(isSameModel('Nike | Pegasus 41 Road Running Shoes Mens - Sports Direct', 'Nike Pegasus 41', null, 'Nike Pegasus 41 Running Shoes'));
   assert.ok(isSameModel('Nike Pegasus 41 GORE-TEX', 'Nike Pegasus 41', null, 'Nike Pegasus 41 GORE-TEX Running Shoes'));
+  // stability (GTS) and EasyOn are different shoes from the neutral Glycerin 22 / Revolution 8
+  assert.ok(!isSameModel('Brooks Mens Glycerin GTS 22 Shoes', 'Brooks Glycerin 22', null, 'Brooks Glycerin 22 Mens Road Running Shoes'));
+  assert.ok(!isSameModel('Nike Revolution 8 EasyOn Men\'s Road Running Shoes', 'Nike Revolution 8', null, 'Nike Revolution 8 Mens Road Running Shoes'));
+  assert.ok(isSameModel('Brooks Mens Glycerin 22 Shoes', 'Brooks Glycerin 22', null, 'Brooks Glycerin 22 Mens Road Running Shoes'));
 });
 
 test('pickCheapest keeps same-model, cheaper, UK offers and drops junk prices', () => {
