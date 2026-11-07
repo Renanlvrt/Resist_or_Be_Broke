@@ -50,3 +50,7 @@ After `result.spokenLine` finishes (audio end, 8s max), the card shows "Taking y
 
 ### A -> frontend: faster detect + silence nudges
 Content script now runs at document_start. Detection fires from `#productTitle` or the `<title>` ("Amazon.co.uk: <product>: ..."), 120ms debounce, demo price after 400ms if no price. The signed voice session and mic permission state are prefetched in parallel on detection and on any product URL. Silence ladder after the opening question: nudge at ~6s, second nudge ~6s later (cached TTS, no repeats, mic muted via setMicMuted while it plays), then quiet close ~8s later (`keephard:idle`). Nudge lines are in backend/scripts/warm-cache.ts.
+
+### B -> search owner: /api/search now implemented (backend/src/routes/search.ts)
+- POST /api/search {product} -> SearchResult. Demo ASINs in packages/shared/demo-alternatives.json return cached:true (Nike B0DPHTGD5C -> SportsShoes £49.99 verified; PUMA B08KKVTB76 -> eBay UK search link, unverified price, sameModel:false).
+- Live mode (non-demo ASINs, not ?demo=1): set FIRECRAWL_API_KEY and ANTHROPIC_API_KEY in .env; logic in backend/src/search/live.ts (6s budget). Otherwise falls back to Google Shopping link on demo-search-cached.json.
