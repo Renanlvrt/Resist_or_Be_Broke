@@ -7,15 +7,18 @@ import { readCached, synthesize } from '../src/tts-cache.js';
 const demo = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/shared/demo-search-cached.json'), 'utf8'));
 const lines = [
   'Why do you need these shoes?',
-  'Really?! This is not like you. Fashion is off this month. Here is a cheaper pair.',
-  'Okay, training. Fair. Still, here is a cheaper pair.',
+  'This is not a valid reason. Come on.',
+  'Okay, training. Fair.',
+  'Buy these and your flight home slips. Here is a cheaper pair.',
   demo.spokenLine,
   'Same shoes, £20 cheaper. That is your flight home.',
   'Sam, you saved £40 last month. Proud of you. Your flight home is that much closer.',
   'Fresh month, fresh start. Every pound you keep gets you closer to your flight home.',
   "I couldn't hear you. Type your reason instead.",
   "I'm having trouble connecting. You can type your reason below.",
+  'Nothing cheaper out there. Your call.', 'Hunted everywhere. That is the best price. Your call.', 'No better deal. Your call, not mine.',
   'Hello!!!!', 'Hellooo? Anyone there?', 'Earth to Sam! Are you still with me?', 'Hey! Still there?', 'Come on, talk to me!',
+  'Go on.', 'Still there?', 'Right then. I am waiting.', 'Not like you, that. Go on.', 'Take your time. Not too much of it, mind.',
 ];
 const alts = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/shared/demo-alternatives.json'), 'utf8'));
 for (const h of Object.values<any>(alts)) {

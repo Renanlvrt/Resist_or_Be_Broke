@@ -90,7 +90,7 @@ class Session extends Emitter<Events> implements Interview {
     if (this.fallbackMode || this.stopped) return;
     this.fallbackMode = true;
     this.emit('fallback', reason);
-    this.emit('caption', QUESTIONS[0], 'avatar');
+    this.emit('caption', QUESTIONS[0]!, 'avatar');
     this.setState('listening');
   }
 
@@ -122,7 +122,7 @@ class Session extends Emitter<Events> implements Interview {
     this.emit('caption', text, 'user');
     this.answers.push(text);
     if (this.answers.length < QUESTIONS.length) {
-      this.emit('caption', QUESTIONS[this.answers.length], 'avatar');
+      this.emit('caption', QUESTIONS[this.answers.length]!, 'avatar');
       return;
     }
     try {
