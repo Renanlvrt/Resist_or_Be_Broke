@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   AISHA,
+  DEMO_PRICES,
   DEMO_TODAY,
   categorise,
   decide,
   forecast,
   saveInstead,
   tally,
+  withAlternative,
   templateWording,
   toSummary,
   type LogEntry,
@@ -36,7 +38,7 @@ describe('forecast', () => {
     const on = (d: string) => f.points.find((p) => p.date === d)!;
     expect(on('2026-11-10').events).toEqual(['Gym']);
     expect(on('2026-11-14').events).toEqual(['Food shop']);
-    expect(on('2026-11-28').balance).toBe(72);
+    expect(on('2026-11-28').balance).toBe(146.99);
   });
 
   it('forecasts 30 days when no income is scheduled', () => {
@@ -47,10 +49,10 @@ describe('forecast', () => {
 });
 
 describe('decide (Aisha)', () => {
-  it('£60 trainers: amber, £12 on 28 Nov with, £72 without', () => {
-    const d = decide(AISHA, req('Nike Air Max 90 Men\'s Trainers', 60), { today });
+  it('£134.99 Nike Air Max 90: amber, £12 on 28 Nov with, £146.99 without', () => {
+    const d = decide(AISHA, req('Nike Air Max 90 Men\'s Trainers', DEMO_PRICES.nike), { today });
     expect(d.lowestWith).toEqual({ amount: 12, date: '2026-11-28' });
-    expect(d.lowestWithout).toEqual({ amount: 72, date: '2026-11-28' });
+    expect(d.lowestWithout).toEqual({ amount: 146.99, date: '2026-11-28' });
     expect(d.outcome).toBe('amber');
     expect(d.ruleBroken).toBeNull();
     expect(d.goalImpact).toMatch(/Flights home/);
@@ -58,13 +60,13 @@ describe('decide (Aisha)', () => {
   });
 
   it('£4 notebook: green, fits the plan', () => {
-    const d = decide(AISHA, req('A5 Lined Notebook', 4), { today });
+    const d = decide(AISHA, req('A5 Lined Notebook', DEMO_PRICES.notebook), { today });
     expect(d.outcome).toBe('green');
     expect(d.goalImpact).toBe('Fits your plan.');
   });
 
   it('wine: red, quotes the user\'s own words', () => {
-    const d = decide(AISHA, req('Casillero del Diablo Merlot Red Wine 75cl', 8), { today });
+    const d = decide(AISHA, req('Casillero del Diablo Merlot Red Wine 75cl', DEMO_PRICES.wine), { today });
     expect(d.outcome).toBe('red');
     expect(d.ruleBroken).toEqual({ id: 'r2', said: 'No alcohol this month.' });
   });
@@ -90,19 +92,19 @@ describe('decide (Aisha)', () => {
   });
 
   it('red when the balance would go below £0 before payday', () => {
-    const d = decide(AISHA, req('Laptop', 100), { today });
-    expect(d.lowestWith.amount).toBe(-28);
+    const d = decide(AISHA, req('Laptop', 160), { today });
+    expect(d.lowestWith.amount).toBe(-13.01);
     expect(d.outcome).toBe('red');
     expect(d.ruleBroken).toBeNull();
   });
 
   it('amber when a purchase eats a big share of the spare money', () => {
-    expect(decide(AISHA, req('Headphones', 20), { today }).outcome).toBe('amber');
+    expect(decide(AISHA, req('Headphones', 40), { today }).outcome).toBe('amber');
   });
 
   it('qty multiplies the price', () => {
-    const d = decide(AISHA, req('Notebook', 30, 2), { today });
-    expect(d.lowestWith.amount).toBe(12);
+    const d = decide(AISHA, req('Notebook', 45, 3), { today });
+    expect(d.lowestWith.amount).toBe(11.99);
   });
 });
 
@@ -117,10 +119,10 @@ describe('categorise', () => {
 
 describe('template wording', () => {
   it('amber matches the PRD lines', () => {
-    const r = req('Nike Air Max 90', 60);
+    const r = req('Nike Air Max 90', DEMO_PRICES.nike);
     const w = templateWording(toSummary(AISHA, r, decide(AISHA, r, { today }), today));
     expect(w.text).toBe(
-      '£60 trainers. Buy these and your balance drops to £12 on 28 November, two days before your next money comes in. It also pushes your Flights home goal back.',
+      '£134.99 trainers. Buy these and your balance drops to £12 on 28 November, two days before your next money comes in. It also pushes your Flights home goal back.',
     );
     expect(w.spoken).toBe('These trainers leave you £12 on the 28th. Still want them?');
   });
@@ -141,10 +143,10 @@ describe('template wording', () => {
 
 describe('privacy', () => {
   it('summary sent to the backend has no balance, bills or income list', () => {
-    const r = req('Nike Air Max 90', 60);
+    const r = req('Nike Air Max 90', DEMO_PRICES.nike);
     const s = toSummary(AISHA, r, decide(AISHA, r, { today }), today);
     const json = JSON.stringify(s);
-    expect(json).not.toContain('412.5');
+    expect(json).not.toContain('487.49');
     expect(s).not.toHaveProperty('balance');
     expect(s).not.toHaveProperty('bills');
     expect(s).not.toHaveProperty('income');
@@ -162,5 +164,22 @@ describe('log', () => {
     expect(tally(log)).toEqual({ checkIns: 3, kept: 1, overruled: 1, redirected: 60 });
     expect(saveInstead(AISHA, 60).goal.saved).toBe(100);
     expect(AISHA.goal.saved).toBe(40);
+  });
+});
+
+describe('cheaper option', () => {
+  it('Nike UK £94.49 saves £40.50 and leaves £52.50 on the 28th', () => {
+    const r = req('Nike Air Max 90', DEMO_PRICES.nike);
+    const alt = withAlternative(AISHA, r, today, {
+      title: 'Nike Air Max 90 Premium', price: 94.49, seller: 'Nike UK', condition: 'new',
+      url: 'https://www.nike.com/gb/w/mens-air-max-90-shoes-auqmoznik1zy7ok',
+    });
+    expect(alt?.saving).toBe(40.5);
+    expect(alt?.lowestIfChosen).toBe(52.5);
+  });
+
+  it('ignores options that are not cheaper', () => {
+    const r = req('Nike Air Max 90', DEMO_PRICES.nike);
+    expect(withAlternative(AISHA, r, today, { title: 'x', price: 140, seller: 's', condition: 'new', url: 'u' })).toBeNull();
   });
 });

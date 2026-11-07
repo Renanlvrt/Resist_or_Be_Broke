@@ -111,6 +111,8 @@ export interface LogEntry {
   outcome: Outcome;
   choice: UserChoice;
   ruleId: string | null;
+  /** Answers to the amber reflection questions (question → answer), if the user gave any. */
+  answers?: Record<string, string>;
   /** Local calendar date of the decision (used for weekly caps). */
   date: ISODate;
   /** ISO timestamp. */

@@ -2,7 +2,7 @@ import { daysBetween, prettyDate } from './dates';
 import { forecast } from './forecast';
 import { gbp, round2 } from './money';
 import { checkRules } from './rules';
-import type { Decision, DecisionSummary, ISODate, LogEntry, Outcome, Profile, PurchaseRequest } from './types';
+import type { Alternative, Decision, DecisionSummary, ISODate, LogEntry, Outcome, Profile, PurchaseRequest } from './types';
 
 export const POLICY = {
   /** Amber if the purchase leaves less than this before the next income. */
@@ -110,4 +110,24 @@ export function toSummary(profile: Profile, req: PurchaseRequest, d: Decision, t
 /** Days between the lowest point and the next income, for wording like "two days before payday". */
 export function daysBeforeIncome(s: Pick<DecisionSummary, 'lowestWith' | 'nextIncomeDate'>): number | null {
   return s.nextIncomeDate ? daysBetween(s.lowestWith.date, s.nextIncomeDate) : null;
+}
+
+/** Lowest balance before the next income if the user buys the cheaper option instead. */
+export function lowestIfChosen(profile: Profile, today: ISODate, altPrice: number, qty = 1): number {
+  return forecast(profile, today, round2(altPrice * qty)).lowest.amount;
+}
+
+/** Turn a raw match from /api/alternatives into the Decision's alternative (saving + lowestIfChosen). */
+export function withAlternative(
+  profile: Profile,
+  req: PurchaseRequest,
+  today: ISODate,
+  alt: Pick<Alternative, 'title' | 'price' | 'seller' | 'condition' | 'url'>,
+): Alternative | null {
+  if (!(alt.price < req.price)) return null;
+  return {
+    ...alt,
+    saving: round2((req.price - alt.price) * req.qty),
+    lowestIfChosen: lowestIfChosen(profile, today, alt.price, req.qty),
+  };
 }
