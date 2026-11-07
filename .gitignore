@@ -37,3 +37,5 @@ Thumbs.db
 # generated voice extension
 chrome-mv3-voice/
 backend.log
+
+backend/data/
