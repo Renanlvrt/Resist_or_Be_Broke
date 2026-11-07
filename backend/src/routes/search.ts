@@ -33,6 +33,7 @@ router.post('/', async (req, res) => {
   const product = req.body?.product ?? {};
   const demoAlts = shared('demo-alternatives.json');
   const hit = findDemo(demoAlts, product);
+  if (hit && Number(product.price) > 0 && Number(hit.alternative?.price) >= Number(product.price)) return res.json({ found: false, savings: 0, spokenLine: '', cached: true });
   if (hit) {
     const colour = colourIn(req.body?.reasonText);
     const v = colour && hit.variants?.[colour];
@@ -43,15 +44,13 @@ router.post('/', async (req, res) => {
   }
   if (req.query.demo !== '1' && product.title && process.env.FIRECRAWL_API_KEY && process.env.ANTHROPIC_API_KEY) {
     const alt = await liveSearch(product.title, product.brand ?? '', Number(product.price) || 0);
-    if (alt) {
+    if (alt && alt.price < Number(product.price)) {
       const savings = Math.round((product.price - alt.price) * 100) / 100;
       return res.json({ found: true, alternative: alt, savings,
         spokenLine: `Same ${product.brand ?? ''} ${savings.toFixed(0)} pounds cheaper at ${alt.retailer}. That is your flight home.`.replace('  ', ' '), cached: false });
     }
   }
-  const base = shared('demo-search-cached.json');
-  const q = encodeURIComponent(`${product.brand ?? ''} ${product.title ?? ''}`.trim());
-  res.json({ ...base, alternative: { ...base.alternative, title: product.title ?? base.alternative.title,
-    brand: product.brand ?? base.alternative.brand, url: `https://www.google.com/search?tbm=shop&q=${q}`, sameModel: false } });
+  // No verified alternative: never invent a price or saving.
+  res.json({ found: false, savings: 0, spokenLine: '', cached: false });
 });
 export default router;
