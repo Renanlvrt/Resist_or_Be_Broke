@@ -37,7 +37,7 @@ export function useVoice(controller: MascotController) {
       face('blase'); // deadpan default; understated mouth-flap, no big movement
       talkT = setInterval(() => { talkFlip = !talkFlip; face(talkFlip ? 'attentif' : 'blase'); }, 360);
     } else if (state === 'happy') face('heureux'); // softer, warm face on accept / saving
-    else if (state === 'disappointed') void play('SUSPICIOUS'); // raised eyebrow on reject (mefiant), not a shake
+    else if (state === 'disappointed') { if (scene.dashboard) face('mefiant'); else void play('SUSPICIOUS'); } // raised eyebrow on reject; never a motion that would close the open dashboard
   }
   function closeImpact(back = true) {
     clearTimeout(impactT); impactT = undefined;
