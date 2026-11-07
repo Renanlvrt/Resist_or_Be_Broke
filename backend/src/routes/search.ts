@@ -5,7 +5,7 @@
 //   2. Live (not ?demo=1): Firecrawl searches named UK retailers for the same model, Claude reads the
 //      pages into offers, we keep only same-model, cheaper, UK offers and return the cheapest.
 //      Results are memoised (30 min) and `?prefetch=1` starts a search early so the real call is instant.
-//   3. Fallback: demo-search-cached.json with a Google Shopping link for this product.
+//   3. Otherwise found:false. We never invent a price or saving.
 // Privacy: only the product's title/brand/price leave the device. Never the profile.
 import { Router } from 'express';
 import { z } from 'zod';

@@ -93,16 +93,20 @@ describe('upstream gaze projection adapted to a page', () => {
 });
 
 describe('minimal monthly recap and existing check-in', () => {
-  it('contains only the fixed savings, three goals, and exact straight receipt content', async () => {
+  it('contains only the fixed savings, savings projection, four goals, and exact straight receipt content', async () => {
     const w = mount(Dashboard);
     expect(w.get('[data-saved-amount]').text()).toBe('£131');
-    expect(w.findAll('.recap-goals li').map(li => li.text())).toEqual(['Save for sports equipment', 'Spend less on takeaways', 'Build an emergency savings fund']);
+    expect(w.findAll('.recap-goals li').map(li => li.text())).toEqual(['Save for sports equipment', 'Spend less on takeaways', 'Build an emergency savings fund', 'No alcohol this month']);
     expect(w.findAll('.receipt-avoided dl > div').map(row => row.text())).toEqual(['Running shoes£65', 'Gym bag£28', 'Coffee maker£38']);
     expect(w.findAll('.receipt-bought dl > div').map(row => row.text())).toEqual(['Phone case£12', 'Snacks£8', 'Dinner£24']);
     const avoided = w.findAll('.receipt-avoided dd').map(node => Number(node.text().slice(1)));
     expect(avoided.reduce((sum, value) => sum + value, 0)).toBe(131);
     expect(w.get('.receipt-total').text()).toBe('SAVED£131');
-    expect(w.find('svg,canvas,progress,[role="progressbar"],nav,.card').exists()).toBe(false);
+    // the only graphic is the hardcoded savings projection
+    expect(w.findAll('svg')).toHaveLength(1);
+    expect(w.find('.savings-projection svg').attributes('aria-label')).toContain('£587');
+    expect(w.get('.projection-heading').text()).toContain('£587 by April');
+    expect(w.find('canvas,progress,[role="progressbar"],nav,.card').exists()).toBe(false);
     expect(w.findAll('button')).toHaveLength(1);
     await w.get('[aria-label="Close dashboard"]').trigger('click'); expect(w.emitted('close')).toHaveLength(1);
     w.unmount();

@@ -67,9 +67,11 @@ try {
   move(window.innerWidth - 10, window.innerHeight - 10);
   await wait(() => shadow.querySelector('[data-dashboard]'), 'intentional corner hover');
   assert.equal(shadow.querySelector('[data-saved-amount]').textContent, '£131');
-  assert.equal(shadow.querySelectorAll('.recap-goals li').length, 3);
+  assert.equal(shadow.querySelectorAll('.recap-goals li').length, 4);
   assert.equal(shadow.querySelectorAll('.receipt-section dl>div').length, 6);
-  assert(!shadow.querySelector('[data-dashboard] svg,[data-dashboard] progress,[data-dashboard] .card'));
+  assert.equal(shadow.querySelectorAll('[data-dashboard] svg').length, 1); // only the savings projection
+  assert(shadow.querySelector('[data-dashboard] .savings-projection svg'));
+  assert(!shadow.querySelector('[data-dashboard] progress,[data-dashboard] .card'));
   assert.equal(shadow.querySelector('[data-body]').getAttribute('fill').toLowerCase(), '#f0b429');
   assert(!shadow.querySelector('[data-body]').hasAttribute('stroke'));
   assert.equal(shadow.querySelector('[data-eye-backing]').getAttribute('fill'), '#FFFFFF');
@@ -79,13 +81,13 @@ try {
   event({ type: 'PURCHASE', item: { title: 'Notebook', price: 4, category: 'stationery' } });
   await wait(() => local.saved?.responses.length === 1, 'green'); assert.equal(local.saved.profile.balance, 1236);
   event({ type: 'PURCHASE', item: { title: 'Trainers', price: 60, category: 'clothing' } });
-  await wait(() => shadow.querySelector('[data-intervention].amber'), 'amber'); assert(button(shadow, 'Continue to checkout →'));
-  button(shadow, 'Save it instead ↗').click(); await wait(() => local.saved.profile.goal.saved === 540, 'save');
+  await wait(() => shadow.querySelector('[data-intervention].amber'), 'amber'); assert(button(shadow, 'Continue to checkout'));
+  button(shadow, 'Save it instead').click(); await wait(() => local.saved.profile.goal.saved === 540, 'save');
   assert.equal(local.saved.profile.balance, 1176);
   event({ type: 'PURCHASE', item: { title: 'Wine', price: 28, category: 'alcohol' } });
   await wait(() => shadow.querySelector('[data-intervention].red'), 'red');
   assert(shadow.querySelector('.backdrop')); assert(shadow.textContent.includes('No alcohol this month.'));
-  button(shadow, 'Continue to checkout →').click(); await wait(() => local.saved.responses.length === 3, 'continue');
+  button(shadow, 'Continue to checkout').click(); await wait(() => local.saved.responses.length === 3, 'continue');
   assert.equal(local.saved.profile.balance, 1148);
   event({ type: 'PURCHASE', item: { title: 'Wine again', price: 28, category: 'alcohol' } });
   await wait(() => shadow.querySelector('[data-intervention]'), 'reminder');
@@ -98,7 +100,7 @@ try {
   assert.equal(local.audioContexts, 0); button(shadow, 'Test sound').click(); assert.equal(local.audioContexts, 0);
   checkbox('Simulate thinking').click(); checkbox('Failed AI response').click(); button(shadow, '£60 trainers').click();
   await wait(() => shadow.querySelector('[data-intervention]')?.textContent.includes('mock response failed'), 'failure fallback');
-  button(shadow, 'Continue to checkout →').click(); await wait(() => local.saved.responses.length === 5, 'failure continue');
+  button(shadow, 'Continue to checkout').click(); await wait(() => local.saved.responses.length === 5, 'failure continue');
   console.log('PASS Popup lab entry, persisted mute, no synthetic-event audio unlock and failure autonomy');
   button(shadow, 'Start / restart check-in').click(); await wait(() => shadow.querySelector('.onboarding'), 'onboarding');
   for (let i = 0; i < 7; i++) { shadow.querySelector('.onboarding .primary-button').click(); await new Promise(resolve => setTimeout(resolve, 20)); }
@@ -106,7 +108,8 @@ try {
   await window.eval(source);
   await wait(() => window.document.documentElement.dataset.pocketExtension === 'ready', 'reinject ready');
   assert.equal(window.document.querySelectorAll('pocket-companion').length, 1);
-  assert.equal(local.messages.size, 1); assert.equal(local.changes.size, 1);
+  // storage listeners: App's sound-mute + the voice layer's savings sync (keephard/store.ts). A leak would show 4.
+  assert.equal(local.messages.size, 1); assert.equal(local.changes.size, 2);
   shadow = window.document.querySelector('pocket-companion').shadowRoot;
   assert(!shadow.querySelector('.dev-panel'));
   for (const listener of local.messages) await listener({ type: 'POCKET_OPEN_LAB' });
@@ -137,8 +140,11 @@ try {
   const click = () => { const event = new w.MouseEvent('click', { bubbles: true, cancelable: true }); Object.defineProperty(event, 'isTrusted', { value: true }); nativeButton.dispatchEvent(event); return event; };
   assert.equal(click().defaultPrevented, true); assert.equal(nativeClicks, 0);
   await wait(() => shadow.querySelector('[data-intervention]'), 'Amazon fixture reflection');
-  assert(shadow.textContent.includes('This Amazon click is paused'));
-  button(shadow, 'Continue to checkout →').click();
+  // the parsed Amazon product reaches the same "Before you buy." check-in (copy redesigned in 1e8851b)
+  assert(shadow.textContent.includes('Before you buy.'));
+  assert(shadow.querySelector('.warning-product').textContent.includes('Wireless headphones'));
+  assert(shadow.querySelector('.warning-product').textContent.includes('£89.99'));
+  button(shadow, 'Continue to checkout').click();
   await wait(() => shadow.textContent.includes('Click Amazon’s Add to Basket again'), 'manual second click feedback');
   assert.equal(nativeClicks, 0); assert.equal(click().defaultPrevented, false); assert.equal(nativeClicks, 1);
   const final = new w.MouseEvent('click', { bubbles: true, cancelable: true }); Object.defineProperty(final, 'isTrusted', { value: true });
