@@ -2,7 +2,7 @@ import { createApp } from 'vue';
 import App from '../../components/App.vue';
 import '../../components/style.css';
 export default defineContentScript({
-  matches: ['https://www.amazon.co.uk/*','http://localhost/*','http://127.0.0.1/*'],
+  matches: ['http://*/*','https://*/*'], // KEEPHARD: corner hover -> dashboard on every site (Amazon purchase hooks stay Amazon-only via isAmazon)
   cssInjectionMode:'ui',
   async main(ctx) {
     if(document.querySelector('pocket-companion'))return;

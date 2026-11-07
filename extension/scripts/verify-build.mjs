@@ -7,7 +7,7 @@ const manifest = JSON.parse(await readFile(path.join(root, 'manifest.json'), 'ut
 assert.equal(manifest.manifest_version, 3);
 assert.deepEqual(manifest.permissions, ['storage']);
 const script = manifest.content_scripts[0];
-assert.deepEqual([...script.matches].sort(), ['http://127.0.0.1/*', 'http://localhost/*', 'https://www.amazon.co.uk/*']);
+assert.deepEqual([...script.matches].sort(), ['http://*/*', 'https://*/*']);
 assert(manifest.action.default_popup);
 for (const file of [...script.js, ...Object.values(manifest.icons), manifest.action.default_popup, 'BLOUB-LICENSE.txt']) await access(path.join(root, file));
 const source = await readFile(path.join(root, script.js[0]), 'utf8');
