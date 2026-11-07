@@ -2,16 +2,17 @@
 import { readFileSync } from 'node:fs';
 const BASE = process.env.BACKEND ?? 'http://localhost:8787';
 const rd = (f) => JSON.parse(readFileSync(new URL('../packages/shared/' + f, import.meta.url), 'utf8'));
-const profile = rd('demo-profile.json'), product = rd('demo-product.json');
+const profile = rd('demo-profile.json');
+const VARIANT = ['sport', 'scarcity', 'need', 'two', 'wine'].includes(process.argv[2]) ? process.argv[2] : 'fashion';
+const product = VARIANT === 'wine' ? { ...rd('demo-product.json'), title: 'Barefoot Merlot Red Wine 75cl', brand: 'Barefoot', price: 8 } : rd('demo-product.json');
 
-const VARIANT = ['sport', 'scarcity', 'need', 'two'].includes(process.argv[2]) ? process.argv[2] : 'fashion';
 const REJECT = 'Not a valid reason, come on.';
 const ACCEPTS = [
   'Fair enough, just this once.',
   'Real need, this once.',
   'Go on then, you need them.',
 ];
-const MAX_WORDS = 10;
+const MAX_WORDS = VARIANT === 'wine' ? 12 : 10;
 // One sentence only: no sentence-ending punctuation except the final one.
 const oneSentence = (s) => !/[.!?]\s+\S/.test(s.trim()) && (s.trim().match(/[.!?]/g) ?? []).length <= 1;
 const checkTurn = (s) => {
@@ -49,7 +50,7 @@ await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Er
 ws.send(JSON.stringify({ type: 'conversation_initiation_client_data', dynamic_variables: dynamicVariables }));
 await waitFor(() => events.some((e) => e.kind === 'say'), 15000); // first message
 const first = events.find((e) => e.kind === 'say')?.text;
-const firstOk = first === 'Why do you need these shoes?';
+const firstOk = first === (VARIANT === 'wine' ? 'Why do you need this wine?' : 'Why do you need these shoes?');
 console.log('FIRST MESSAGE:', firstOk ? 'PASS' : 'FAIL ' + first);
 await sleep(5000); // let the greeting finish so the text turn does not interrupt it
 // Silence step: after the greeting the agent must stay quiet for 15s with no input.
@@ -76,6 +77,7 @@ async function round(n, text, expect) {
   }
   if (!says.length) fails.push('no agent_response');
   for (const s of says) fails.push(...checkTurn(s));
+  if (expect.health && !says.some((s) => /health/i.test(s))) fails.push('no health line: ' + JSON.stringify(says));
   // Soft check (warn only): the reply should echo a word from what the user said.
   const userWords = new Set((text.toLowerCase().match(/[a-z]{4,}/g) ?? []));
   const echoes = says.some((s) => (s.toLowerCase().match(/[a-z]{4,}/g) ?? []).some((w) => userWords.has(w)));
@@ -83,7 +85,9 @@ async function round(n, text, expect) {
   console.log(`ROUND ${n}: ${fails.length ? 'FAIL ' + fails.join('; ') : 'PASS'} | latency to first agent response: ${firstResp ?? 'n/a'}ms`);
   return !fails.length;
 }
-const a = VARIANT === 'sport'
+const a = VARIANT === 'wine'
+  ? await round(1, 'I want to party with others', { verdict: 'reject', cats: ['other'], wants: [], health: true })
+  : VARIANT === 'sport'
   ? await round(1, 'training for track', { verdict: 'accept', cats: ['sport'], wants: ACCEPTS })
   : VARIANT === 'two'
     ? (await round(1, 'my friend has them', { verdict: 'reject', cats: ['fashion', 'other'], wants: [REJECT] }))

@@ -7,6 +7,7 @@ import { readCached, synthesize } from '../src/tts-cache.js';
 const demo = JSON.parse(fs.readFileSync(path.join(ROOT, 'packages/shared/demo-search-cached.json'), 'utf8'));
 const lines = [
   'Why do you need these shoes?',
+  'Why do you need this wine?', 'Party or not, do not buy it, think of your health.', 'Whatever the reason, do not buy it, for your health.', 'Still no, do not buy it, for the sake of your health.',
   'Not a valid reason, come on.',
   'Fair enough, just this once.',
   'Real need, this once.',

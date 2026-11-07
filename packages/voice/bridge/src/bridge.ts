@@ -205,7 +205,8 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
   const tone = verdict === 'accept' ? 'caution' : 'reject';
   const wd = setTimeout(() => { if (!shown) closeAll('verdict watchdog'); }, impact ? 45000 : 20000);
   try {
-    const searchP = doSearch(product, demo); // starts now (cold live search can take 3-7s); overlaps the verdict line + dashboard beat
+    const alcohol = product?.productKind === 'alcohol'; // never search or promote cheaper alcohol
+    const searchP = alcohol ? Promise.resolve(undefined) : doSearch(product, demo); // starts now (cold live search can take 3-7s); overlaps the verdict line + dashboard beat
     if (s) { try { await Promise.race([s.agentDone(), new Promise((r) => setTimeout(r, 9000))]); if (!integrated) s.endVoice(); } catch { /* ignore */ } } // the queue also waits for the live agent
     const gen = ++offerGen;
     // Strictly serial speech: every clip goes through the voice layer's single priority queue (never two voices at once).
@@ -220,6 +221,7 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
       await speak(tone === 'caution' ? CAUTION_LINE : IMPACT_LINE, tone === 'caution' ? 'happy' : 'disappointed', 'beat', 25000);
       if (gen !== offerGen) return;
     }
+    if (alcohol) { shown = true; clearTimeout(wd); if (integrated) void armGrace(); else stop(); return; }
     const result = await searchP; // waits for the rest of the ~9s search budget
     if (gen !== offerGen) return;
     if (!result || !result.found || !result.alternative) { shown = true; clearTimeout(wd); await endNotFound(result ? 'not found' : 'search failed', final); return; }
@@ -776,7 +778,7 @@ async function autoStart(product: any) {
   emit('detected', { product });
   prewarmSession(product);
   // search prefetch: backend runs the live search in the background so the real call answers from memory
-  proxyFetch(BACKEND + '/api/search?prefetch=1', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ product }) }).catch(() => {});
+  if (product?.productKind !== 'alcohol') proxyFetch(BACKEND + '/api/search?prefetch=1', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ product }) }).catch(() => {});
   ensureUi();
   if (await tryUnlockAudio()) { await beginSession(product); return; }
   // autoplay blocked: friendly bubble, start on the first real gesture

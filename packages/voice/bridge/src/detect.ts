@@ -2,12 +2,15 @@
 export interface DetectedProduct {
   title: string; brand: string; price: number | undefined; currency: 'GBP'; url: string; site: string; image?: string;
   priceDemo?: boolean;
+  productKind?: 'shoes' | 'alcohol';
   asin?: string; altAsins?: string[]; colour?: string;
 }
 export interface DetectResult { product?: DetectedProduct; reason: string; }
 
 export const DEMO_PRICE = 120;
 const SHOE_RE = /(shoe|trainer|sneaker|running|boot|sandal|slipper)/i;
+// word-boundary match so 'Beginner' / 'Original' / 'Forum' never hit gin / rum etc.
+export const ALCOHOL_RE = /\b(wines?|beers?|lagers?|ciders?|vodkas?|whisky|whiskey|whiskies|gins?|rum|prosecco|champagne)\b/i;
 const ASIN_RE = /\/(?:dp|gp\/product)\/([A-Z0-9]{8,12})/i;
 
 export function isProductUrl(href: string): boolean {
@@ -99,7 +102,9 @@ export function detectProduct(doc: Document, href: string, opts: { demo?: boolea
   if (!title) return { reason: 'no title yet' };
   const byline = (doc.querySelector('#bylineInfo')?.textContent || '').replace(/\s+/g, ' ').trim();
   const crumbs = (doc.querySelector('#wayfinding-breadcrumbs_feature_div')?.textContent || '').replace(/\s+/g, ' ');
-  if (!SHOE_RE.test(title) && !/shoes/i.test(crumbs)) return { reason: 'not a shoe' };
+  const isShoe = SHOE_RE.test(title) || /shoes/i.test(crumbs);
+  const isAlcohol = !isShoe && ALCOHOL_RE.test(title);
+  if (!isShoe && !isAlcohol) return { reason: 'not a shoe' };
   const brand = brandOf(title, byline);
   let price = readPrice(doc);
   let priceDemo = false;
@@ -116,6 +121,6 @@ export function detectProduct(doc: Document, href: string, opts: { demo?: boolea
   const colour = readColour(doc);
   return {
     reason: 'ok',
-    product: { title, brand, price, currency: 'GBP', url: u.origin + (asin ? '/dp/' + asin : u.pathname), site: u.hostname.replace(/^www\./, ''), image: image || undefined, priceDemo, asin, altAsins, colour },
+    product: { title, brand, price, currency: 'GBP', productKind: isAlcohol ? 'alcohol' : 'shoes', url: u.origin + (asin ? '/dp/' + asin : u.pathname), site: u.hostname.replace(/^www\./, ''), image: image || undefined, priceDemo, asin, altAsins, colour },
   };
 }

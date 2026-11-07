@@ -21,10 +21,22 @@ const VerdictZ = z.object({
   spokenLine: z.string(),
 });
 
+const ALCOHOL_RE = /\b(wine|beer|lager|cider|vodka|whisky|whiskey|gin|rum|prosecco|champagne|spirits?|merlot|ale|tequila|brandy)\b/i;
+const isAlcohol = (product: any) => ALCOHOL_RE.test(String(product?.title ?? ''));
+const HEALTH_LINES = [
+  'Party or not, do not buy it, think of your health.',
+  'Whatever the reason, do not buy it, for your health.',
+  'Still no, do not buy it, for the sake of your health.',
+];
+const pickHealth = (round: number) => HEALTH_LINES[round >= 2 ? 2 : Math.floor(Math.random() * 2)];
+
 function dynamicVariables(profile: any, product: any) {
   const c = profile?.categories ?? {};
   const rules = CATS.map((k) => `${k} (limit £${c[k]?.limit ?? 0}): ${c[k]?.rule ?? ''}`).join('; ');
+  const alc = isAlcohol(product);
   return {
+    product_kind: alc ? 'alcohol' : 'shoes',
+    opening_noun: alc ? (/\b(wine|merlot|prosecco|champagne)\b/i.test(String(product?.title)) ? 'this wine' : 'this drink') : 'these shoes',
     product_title: String(product?.title ?? ''),
     price: String(product?.price ?? ''),
     brand: String(product?.brand ?? ''),
@@ -92,6 +104,7 @@ function keywordVerdict(userText: string, round: number) {
 
 router.post('/judge', async (req, res) => {
   const { profile, product, userText = '', round = 1 } = req.body ?? {};
+  if (isAlcohol(product)) return res.json({ verdict: 'reject', reasonCategory: 'other', userReasonSummary: String(userText).slice(0, 80), spokenLine: pickHealth(Number(round)) });
   const sys = `You are KeepHard, a deadpan, caring older brother who knows the student's budget. Judge whether the user's reason for buying fits their budget rules. Genuine needs are valid reasons: cold or winter (warm or leather shoes), worn-out or broken shoes, work/interview/uniform requirement, injury or medical, sport/training/race, school or placement. For genuine needs: verdict accept, reasonCategory "sport" for sport/training/race, otherwise "other"; spokenLine is one of these exact lines: ${ACCEPT_LINES.join(' | ')} Reject fashion, "friend has it", urgency or scarcity reasons: verdict reject, reasonCategory "fashion" for fashion or "other" for urgency/scarcity; spokenLine (exactly): ${REJECT_LINE} Decide immediately in one round. Every spokenLine is EXACTLY ONE sentence of at most 8 words, with no second sentence, advice, explanation or question. Never mention a cheaper pair, prices, alternatives or the dashboard. Reply with ONLY JSON: {"verdict":"accept"|"reject","reasonCategory":"sport"|"fashion"|"eating_out"|"groceries"|"tech"|"other","userReasonSummary":string,"spokenLine":string (no preamble, no emotion tags)}.`;
   const usr = `Rules: ${JSON.stringify(dynamicVariables(profile, product))}\nProduct: ${product?.title} £${product?.price}\nRound: ${round}\nUser said: "${userText}"`;
   try {

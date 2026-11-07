@@ -94,4 +94,22 @@ for (const g of pages) {
 const b = detectProduct(doc('<span id="productTitle">Brooks Ghost Running Shoes</span><a id="bylineInfo">Brand: Brooks</a><span class="a-price"><span class="a-offscreen">£100</span></span><div id="detailBullets_feature_div"><ul><li><span>ASIN &#8207; : &#8206; B0BULLET11</span></li></ul></div>'), 'https://www.amazon.co.uk/x/dp/B0BULLET00').product;
 assert.deepEqual(b.altAsins, ['B0BULLET11']); assert.equal(b.colour, undefined);
 
+// ---- alcohol: wine page starts the flow with productKind 'alcohol'; shoes stay 'shoes' ----
+const URL_WINE = 'https://www.amazon.co.uk/Barefoot-Merlot-Red-Wine/dp/B00WINE123';
+const wine = detectProduct(doc('<span id="productTitle">Barefoot Merlot Red Wine 75cl</span><a id="bylineInfo">Visit the Barefoot Store</a><span class="a-price"><span class="a-offscreen">£7.50</span></span>'), URL_WINE).product;
+assert.ok(wine, JSON.stringify(detectProduct(doc("<span id=\"productTitle\">Barefoot Merlot Red Wine 75cl</span>"), URL_WINE))); assert.equal(wine.productKind, 'alcohol'); assert.equal(wine.price, 7.5); assert.equal(wine.title, 'Barefoot Merlot Red Wine 75cl');
+for (const t of ['Heineken Lager 24 x 330ml', 'Whisky Gift Set', 'Gordons London Dry Gin 70cl', 'Bacardi Rum 1L', 'Prosecco DOC 75cl', 'Strongbow Cider 12 Pack']) {
+  const a = detectProduct(doc(`<span id="productTitle">${t}</span><span class="a-price"><span class="a-offscreen">£9.00</span></span>`), URL_WINE).product;
+  assert.equal(a?.productKind, 'alcohol', t);
+}
+assert.equal(detectProduct(doc(withPrice), URL_NIKE).product.productKind, 'shoes');
+for (const t of ['Nike Reaction Training Shoes', 'Beginner running shoes', 'Original Trainers Forum Rum Runner Sneakers']) {
+  const n = detectProduct(doc(`<span id="productTitle">${t}</span><span class="a-price"><span class="a-offscreen">£40.00</span></span>`), URL_NIKE).product;
+  assert.equal(n?.productKind, 'shoes', t);
+}
+for (const t of ['Beginner Guitar Book', 'Original Forum Poster']) {
+  const n = detectProduct(doc(`<span id="productTitle">${t}</span><span class="a-price"><span class="a-offscreen">£10.00</span></span>`), URL_NIKE);
+  assert.equal(n.product, undefined, t);
+}
+
 console.log('detect.test.mjs: all assertions passed');
