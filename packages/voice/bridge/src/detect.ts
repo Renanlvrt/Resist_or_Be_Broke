@@ -2,6 +2,7 @@
 export interface DetectedProduct {
   title: string; brand: string; price: number | undefined; currency: 'GBP'; url: string; site: string; image?: string;
   priceDemo?: boolean;
+  asin?: string; altAsins?: string[]; colour?: string;
 }
 export interface DetectResult { product?: DetectedProduct; reason: string; }
 
@@ -51,6 +52,37 @@ export function readPrice(doc: Document): number | undefined {
   return undefined;
 }
 
+const clean = (t: string | null | undefined) => (t || '').replace(/[‎‏ ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** ASIN from the detail table / bullets ("ASIN" row), if present. */
+export function readTableAsin(doc: Document): string | undefined {
+  const ok = (v: string) => { const m = clean(v).replace(/^[:\s]+/, '').match(/^[A-Z0-9]{10}$/i); return m ? m[0].toUpperCase() : undefined; };
+  for (const tr of Array.from(doc.querySelectorAll('tr'))) {
+    const th = tr.querySelector('th'), td = tr.querySelector('td');
+    if (th && td && /^ASIN$/i.test(clean(th.textContent))) { const a = ok(td.textContent || ''); if (a) return a; }
+  }
+  for (const li of Array.from(doc.querySelectorAll('#detailBullets_feature_div li, #detailBulletsWrapper_feature_div li'))) {
+    const m = clean(li.textContent).match(/^ASIN\s*:?\s*([A-Z0-9]{10})/i);
+    if (m) return m[1].toUpperCase();
+  }
+  return undefined;
+}
+
+/** Selected colour, from "Colour: X" selection text. */
+export function readColour(doc: Document): string | undefined {
+  for (const sel of ['#variation_color_name .selection', '#inline-twister-expanded-dimension-text-color_name', '#variation_color_name .a-dropdown-prompt', '#native_dropdown_selected_size_name']) {
+    const t = clean(doc.querySelector(sel)?.textContent); if (t && !/^select/i.test(t)) return t;
+  }
+  const lab = clean(doc.querySelector('#variation_color_name label, #variation_color_name .a-form-label')?.textContent);
+  const m = lab.match(/Colou?r\s*:\s*(.+)/i);
+  if (m) return m[1].trim();
+  for (const tr of Array.from(doc.querySelectorAll('tr'))) {
+    const th = tr.querySelector('th'), td = tr.querySelector('td');
+    if (th && td && /^Colou?r$/i.test(clean(th.textContent))) { const t = clean(td.textContent); if (t) return t; }
+  }
+  return undefined;
+}
+
 function brandOf(title: string, byline: string): string {
   const m = byline.match(/Visit the (.+?) Store/i) || byline.match(/Brand:\s*(.+)/i);
   if (m) return m[1].trim();
@@ -79,8 +111,11 @@ export function detectProduct(doc: Document, href: string, opts: { demo?: boolea
   const image = img?.getAttribute('data-old-hires') || img?.getAttribute('src') || undefined;
   const u = new URL(href);
   const asin = u.pathname.match(ASIN_RE)?.[1]?.toUpperCase();
+  const tableAsin = readTableAsin(doc);
+  const altAsins = tableAsin && tableAsin !== asin ? [tableAsin] : [];
+  const colour = readColour(doc);
   return {
     reason: 'ok',
-    product: { title, brand, price, currency: 'GBP', url: u.origin + (asin ? '/dp/' + asin : u.pathname), site: u.hostname.replace(/^www\./, ''), image: image || undefined, priceDemo },
+    product: { title, brand, price, currency: 'GBP', url: u.origin + (asin ? '/dp/' + asin : u.pathname), site: u.hostname.replace(/^www\./, ''), image: image || undefined, priceDemo, asin, altAsins, colour },
   };
 }

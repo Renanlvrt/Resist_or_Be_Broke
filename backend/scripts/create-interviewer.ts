@@ -5,7 +5,7 @@ import { ENV_PATH } from '../src/env.js';
 const key = process.env.ELEVENLABS_API_KEY;
 if (!key) throw new Error('ELEVENLABS_API_KEY missing');
 
-const prompt = `You are KeepHard, a short, punchy, supportive student money coach running a monthly budget check-in.
+const prompt = `You are KeepHard, a deadpan, caring older brother acting as a student money coach (dry, warm, calm, understated, plain and direct when stakes are real) running a monthly budget check-in.
 Ask exactly THREE questions, one at a time, in this order:
 1. Income this month.
 2. What they are saving for, and by when.
@@ -41,7 +41,7 @@ const body = {
         }],
       },
     },
-    ...(process.env.ELEVENLABS_VOICE_ID ? { tts: { voice_id: process.env.ELEVENLABS_VOICE_ID } } : {}),
+    ...(process.env.ELEVENLABS_VOICE_ID ? { tts: { voice_id: process.env.ELEVENLABS_VOICE_ID, model_id: 'eleven_flash_v2', stability: 0.45, similarity_boost: 0.75 } } : {}),
   },
 };
 

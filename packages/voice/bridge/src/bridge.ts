@@ -78,9 +78,16 @@ let chainBusy = false;
 // ---------- search + savings ----------
 const SAVINGS_KEY = 'keephard.savings';
 
+let userLines: string[] = [];   // what the user said this session
+let reasonSummary = '';          // verdict.userReasonSummary
+const currentReason = (): string | undefined => {
+  const t = [userLines.join(' '), reasonSummary].map((x) => x.trim()).filter(Boolean).join(' | ').slice(0, 600);
+  return t || undefined;
+};
+
 async function runSearch(product: any, demo?: boolean): Promise<any> {
   const res = await proxyFetch(BACKEND + '/api/search' + (demo ? '?demo=1' : ''), {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ product }),
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ product, reasonText: currentReason() }),
   });
   if (!res.ok) throw new Error('search HTTP ' + res.status);
   return res.json();
@@ -199,6 +206,7 @@ function startSession(d: any, force = false): Promise<void> {
   stop();
   lastDemo = !!d.demo;
   lastProduct = d.product;
+  userLines = []; reasonSummary = '';
   autoChain = d.autoSavings !== false;
   const s = createInterrogation({
     profile: d.profile || (demoProfile as any),
@@ -232,11 +240,11 @@ function startSession(d: any, force = false): Promise<void> {
   s.on('state', (state) => { if (session !== s) return; emit('state', { state }); ui?.state(state); if (state === 'listening' && gotQ && !armed) armIdle(); });
   s.on('caption', (text, who) => {
     if (session !== s) return;
-    if (who === 'user') { userSpoke = true; clearTimeout(idleT); } else if (!gotQ) { gotQ = true; }
+    if (who === 'user') { userLines.push(text); userSpoke = true; clearTimeout(idleT); } else if (!gotQ) { gotQ = true; }
     emit('caption', { text, who }); ui?.caption(text, who);
   });
   s.on('verdict', (verdict) => {
-    if (session !== s) return; clearTimeout(idleT); clearTimeout(capT); emit('verdict', { verdict }); ui?.scheduleHide(60000); ui?.caption(`Verdict: ${verdict.verdict} (${verdict.reasonCategory})`, 'avatar');
+    if (session !== s) return; clearTimeout(idleT); clearTimeout(capT); if (verdict?.userReasonSummary) reasonSummary = String(verdict.userReasonSummary); emit('verdict', { verdict }); ui?.scheduleHide(60000); ui?.caption(`Verdict: ${verdict.verdict} (${verdict.reasonCategory})`, 'avatar');
     if (autoChain) void offerBeat(d.product, d.demo, s, verdict.verdict);
   });
   s.on('fallback', (reason) => { if (session !== s) return; emit('fallback', { reason }); ui?.fallback(reason); });
@@ -470,7 +478,8 @@ class Panel {
   offer(r: any, done: (opened: boolean) => void) {
     const a = r.alternative, q = (s: string) => this.offerEl.querySelector(s) as HTMLElement;
     q('.otitle').textContent = a.title;
-    q('.oret').textContent = a.retailer;
+    const col = a.colour || a.color || r.matchedColour || r.colour || r.matchedColor;
+    q('.oret').textContent = a.retailer + (col ? ' · ' + col : '');
     q('.oprice').textContent = '£' + Number(a.price).toFixed(2);
     q('.badge').textContent = 'Save £' + Number(r.savings).toFixed(2);
     const fresh = (sel: string) => { const o = q(sel); const n = o.cloneNode(true) as HTMLElement; o.replaceWith(n); return n; };
