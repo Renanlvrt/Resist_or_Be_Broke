@@ -23,7 +23,7 @@ await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Er
 ws.send(JSON.stringify({ type: 'conversation_initiation_client_data' }));
 await waitFor(() => events.some((e) => e.kind === 'say'), 15000);
 await sleep(4000);
-const answers = ['I get about 1100 pounds this month', "I'm saving 150 pounds for a flight home by December 15th", 'No fashion or tech this month, and less eating out'];
+const answers = ['I get about 1100 pounds this month', "I'm saving 400 pounds for a summer holiday by June 30th", 'No fashion or tech this month, and less eating out'];
 const fails = [];
 for (const [i, a] of answers.entries()) {
   const n = events.length; log(`USER ${i + 1}:`, a);

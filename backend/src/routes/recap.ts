@@ -32,7 +32,7 @@ router.post('/recap', async (req, res) => {
 
 router.post('/savings-line', async (req, res) => {
   const { product, alternative, savings = 0, profile } = req.body ?? {};
-  const goalLabel = String(profile?.goal?.label ?? 'flight home').toLowerCase();
+  const goalLabel = String(profile?.goal?.label ?? 'summer holiday').toLowerCase();
   const name = String(alternative?.title ?? product?.title ?? 'item').replace(/\s*(Running Shoes|Trainers)$/i, '').replace(/\s+\d+$/, '');
   const retailer = String(alternative?.retailer ?? 'another shop');
   const s = gbp(Number(savings) || 0);

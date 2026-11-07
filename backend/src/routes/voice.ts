@@ -6,8 +6,13 @@ import { readCached, cachePath, TTS_DIR, VOICE_SETTINGS, MODEL_ID } from '../tts
 
 const router = Router();
 const CATS = ['sport', 'fashion', 'eating_out', 'groceries', 'tech', 'other'] as const;
-const REJECT_LINE = 'This is not a valid reason. Come on.';
-const ACCEPT_LINE = 'Okay, training. Fair.';
+const REJECT_LINE = 'Not a valid reason, come on.';
+const ACCEPT_LINES = [
+  'Fair enough, just this once.',
+  'Real need, this once.',
+  'Go on then, you need them.',
+];
+const pickAccept = () => ACCEPT_LINES[Math.floor(Math.random() * ACCEPT_LINES.length)];
 
 const VerdictZ = z.object({
   verdict: z.enum(['accept', 'reject']),
@@ -26,6 +31,8 @@ function dynamicVariables(profile: any, product: any) {
     sport_limit: String(c.sport?.limit ?? 0),
     fashion_limit: String(c.fashion?.limit ?? 0),
     rules,
+    goal_label: String(profile?.goal?.label ?? 'Summer holiday'),
+    goal_amount: String(profile?.goal?.amount ?? 400),
   };
 }
 
@@ -74,15 +81,18 @@ function keywordVerdict(userText: string, round: number) {
   if (has(['fashion', 'friend', 'everyone', 'look', 'style', 'trend']))
     return { verdict: 'reject', reasonCategory: 'fashion', userReasonSummary: summary, spokenLine: REJECT_LINE };
   if (has(['track', 'training', 'run', 'sport', 'gym', 'race']))
-    return { verdict: 'accept', reasonCategory: 'sport', userReasonSummary: summary, spokenLine: ACCEPT_LINE };
+    return { verdict: 'accept', reasonCategory: 'sport', userReasonSummary: summary, spokenLine: pickAccept() };
+  // Genuine needs: cold/winter, worn or broken shoes, work/interview/uniform, injury, school/placement.
+  if (has(['cold', 'winter', 'leather', 'worn', 'broken', 'hole', 'interview', 'uniform', 'work', 'injur', 'medical', 'school', 'placement']))
+    return { verdict: 'accept', reasonCategory: 'other', userReasonSummary: summary, spokenLine: pickAccept() };
   return round >= 2
-    ? { verdict: 'accept', reasonCategory: 'other', userReasonSummary: summary, spokenLine: ACCEPT_LINE }
+    ? { verdict: 'accept', reasonCategory: 'other', userReasonSummary: summary, spokenLine: pickAccept() }
     : { verdict: 'reject', reasonCategory: 'other', userReasonSummary: summary, spokenLine: REJECT_LINE };
 }
 
 router.post('/judge', async (req, res) => {
   const { profile, product, userText = '', round = 1 } = req.body ?? {};
-  const sys = `You are KeepHard, a deadpan, caring older brother who knows the student's budget. Judge whether the user's reason for buying fits their budget rules. Reject fashion, "friend has it", urgency or scarcity reasons (for those use reasonCategory "other"); accept sport/training reasons within limits. Decide immediately in one round. Reject spokenLine (exactly): ${REJECT_LINE} Accept spokenLine (exactly): ${ACCEPT_LINE} Reply with ONLY JSON: {"verdict":"accept"|"reject","reasonCategory":"sport"|"fashion"|"eating_out"|"groceries"|"tech"|"other","userReasonSummary":string,"spokenLine":string (max 8 words, no preamble, no emotion tags)}.`;
+  const sys = `You are KeepHard, a deadpan, caring older brother who knows the student's budget. Judge whether the user's reason for buying fits their budget rules. Genuine needs are valid reasons: cold or winter (warm or leather shoes), worn-out or broken shoes, work/interview/uniform requirement, injury or medical, sport/training/race, school or placement. For genuine needs: verdict accept, reasonCategory "sport" for sport/training/race, otherwise "other"; spokenLine is one of these exact lines: ${ACCEPT_LINES.join(' | ')} Reject fashion, "friend has it", urgency or scarcity reasons: verdict reject, reasonCategory "fashion" for fashion or "other" for urgency/scarcity; spokenLine (exactly): ${REJECT_LINE} Decide immediately in one round. Every spokenLine is EXACTLY ONE sentence of at most 8 words, with no second sentence, advice, explanation or question. Never mention a cheaper pair, prices, alternatives or the dashboard. Reply with ONLY JSON: {"verdict":"accept"|"reject","reasonCategory":"sport"|"fashion"|"eating_out"|"groceries"|"tech"|"other","userReasonSummary":string,"spokenLine":string (no preamble, no emotion tags)}.`;
   const usr = `Rules: ${JSON.stringify(dynamicVariables(profile, product))}\nProduct: ${product?.title} £${product?.price}\nRound: ${round}\nUser said: "${userText}"`;
   try {
     const out = await askClaude(sys, usr, 2000, 300);
