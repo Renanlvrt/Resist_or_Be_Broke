@@ -10,3 +10,10 @@
 - BLOCKER: the ElevenLabs API key lacks the `convai_write` permission (401 on agents/create), so ELEVENLABS_AGENT_ID is empty and `POST /api/voice/session` returns 500 "ElevenLabs not configured". Fix: in the ElevenLabs dashboard give the key Conversational AI write + read access (or create the agent by hand), then run `cd backend && npx tsx scripts/create-agent.ts`. It writes the id into .env.
 - Backend: `cd backend && npm start` (:8787). `/api/voice/speak` and `/judge` work. `/api/search` is a stub that returns the cached JSON; the search owner replaces backend/src/routes/search.ts.
 - The agent's client tool is `decide` with {verdict, reasonCategory, userReasonSummary, spokenLine}. Dynamic variables: product_title, price, brand, sport_limit, fashion_limit, rules.
+
+## A -> B
+- Verified packages/voice against @elevenlabs/client 1.35.0 (now pinned): the API usage was correct; only added explicit `connectionType: 'websocket'`.
+- Agent config (dashboard/create-agent script): `decide` must be a blocking client tool (wait for response) so the returned string reaches the LLM; use TTS model `eleven_flash_v2_5` and a fast LLM, turn timeout 1-2s. Overrides (firstMessage/prompt/voice) only work if enabled in the agent's Security settings; avoid relying on them.
+- Extension: getUserMedia in a content script prompts per host origin (amazon.co.uk). Preferred: render the avatar/voice in an extension-origin iframe with `allow="microphone"` so the grant is once for the extension; otherwise the user clicks Allow once on amazon.co.uk and it persists.
+
+- [ ] (A) backend/scripts/create-agent.ts sets decide to expects_response:false, but packages/voice returns a string from the tool and docs/ELEVENLABS_AGENT_MANUAL.md uses blocking. Please change it to expects_response:true before running Route A. B owns that file.

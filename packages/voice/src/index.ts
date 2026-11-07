@@ -68,6 +68,7 @@ class Session extends Emitter<Events> implements Interrogation {
       const { signedUrl, dynamicVariables } = await r.json();
       return Conversation.startSession({
         signedUrl,
+        connectionType: 'websocket',
         dynamicVariables,
         clientTools: { decide: (p: Verdict) => this.onDecide(p) },
         onMessage: ({ message, source }) => {
