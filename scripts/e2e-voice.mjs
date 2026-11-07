@@ -48,10 +48,10 @@ async function round(n, text, expect) {
     const p = tool.params ?? {};
     if (p.verdict !== expect.verdict) fails.push(`verdict ${p.verdict} != ${expect.verdict}`);
     if (p.reasonCategory !== expect.cat) fails.push(`category ${p.reasonCategory} != ${expect.cat}`);
-    if (p.spokenLine && p.spokenLine.split(/\s+/).length > 15) fails.push('spokenLine >15 words');
+    if (p.spokenLine && p.spokenLine.split(/\s+/).length > 10) fails.push('spokenLine >10 words');
   }
   if (!says.length) fails.push('no agent_response');
-  for (const s of says) if (s.split(/\s+/).length > 15) fails.push(`reply >15 words: "${s}"`);
+  for (const s of says) if (s.split(/\s+/).length > 10) fails.push(`reply >10 words: "${s}"`);
   console.log(`ROUND ${n}: ${fails.length ? 'FAIL ' + fails.join('; ') : 'PASS'} | latency to first agent response: ${firstResp ?? 'n/a'}ms`);
   return !fails.length;
 }

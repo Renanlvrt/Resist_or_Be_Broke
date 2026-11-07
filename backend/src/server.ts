@@ -4,7 +4,7 @@ import cors from 'cors';
 import voice from './routes/voice.js';
 import recap from './routes/recap.js';
 import search from './routes/search.js';
-import interview from './routes/interview.js';
+import interview, { profileRouter } from './routes/interview.js';
 
 const app = express();
 app.use(cors({
@@ -16,6 +16,7 @@ app.use('/api/voice', voice);
 app.use('/api/voice', recap);
 app.use('/api/search', search);
 app.use('/api/interview', interview);
+app.use('/api/profile', profileRouter);
 
 const port = Number(process.env.PORT) || 8787;
 app.listen(port, () => console.log(`KeepHard backend on :${port}`));

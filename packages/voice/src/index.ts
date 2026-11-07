@@ -217,3 +217,6 @@ class Session extends Emitter<Events> implements Interrogation {
 export function createInterrogation(opts: InterrogationOptions): Interrogation {
   return new Session(opts);
 }
+
+export { createInterview } from './interview';
+export type { Interview, InterviewOptions } from './interview';
