@@ -13,6 +13,8 @@ export interface Wording {
   text: string;
   /** Short spoken line (null for green: we stay quiet). */
   spoken: string | null;
+  /** Body text for a pop-up that already shows the quoted rule as its headline. */
+  detail?: string;
 }
 
 const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
@@ -64,6 +66,7 @@ export function templateWording(s: DecisionSummary): Wording {
     return {
       text: `You told me on ${prettyDate(s.setOn)}: "${s.ruleSaid}" This looks like ${CATEGORY_WORDS[s.category]}. Your call.`,
       spoken: `You said ${stripPunct(lowerFirst(s.ruleSaid))}. Your call.`,
+      detail: `This looks like ${CATEGORY_WORDS[s.category]}. Your call.`,
     };
   }
 

@@ -2,7 +2,7 @@
  * Live search: Firecrawl finds the model at UK retailers, OpenAI reads each page into a structured offer.
  * Only the item title is sent to Firecrawl/OpenAI (plus page content they fetch). No user finances.
  */
-import type { Document, SearchResultWeb } from '@mendable/firecrawl-js';
+import Firecrawl, { type Document, type SearchResultWeb } from '@mendable/firecrawl-js';
 import OpenAI from 'openai';
 import { zodResponseFormat } from 'openai/helpers/zod';
 import { z } from 'zod';
@@ -52,18 +52,7 @@ export function toPages(web: Array<SearchResultWeb | Document> | undefined): Pag
   return pages;
 }
 
-/**
- * The SDK does `import * as zod from 'zod'` and feature-detects `zod.toJSONSchema` (zod v4) at runtime.
- * That works in Node, but webpack's static export check fails the Next build against zod 3. So let Node load
- * it natively instead of bundling it. (Alternative: `serverExternalPackages: ['@mendable/firecrawl-js']`.)
- */
-async function loadFirecrawl(): Promise<typeof import('@mendable/firecrawl-js').default> {
-  const mod = await import(/* webpackIgnore: true */ '@mendable/firecrawl-js');
-  return mod.default;
-}
-
 export async function searchPages(title: string, signal: AbortSignal): Promise<Page[]> {
-  const Firecrawl = await loadFirecrawl();
   const firecrawl = new Firecrawl({ apiKey: process.env.FIRECRAWL_API_KEY, timeoutMs: 5000, maxRetries: 0 });
   const res = await abortable(
     firecrawl.search(buildQuery(title), {

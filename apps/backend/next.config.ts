@@ -7,6 +7,9 @@ loadEnvConfig(resolve(process.cwd(), '../..'));
 
 const config: NextConfig = {
   transpilePackages: ['@resist/engine'],
+  // The Firecrawl SDK feature-detects zod v4 at runtime; let Node load it instead of webpack bundling it.
+  serverExternalPackages: ['@mendable/firecrawl-js'],
+  outputFileTracingRoot: resolve(process.cwd(), '../..'),
 };
 
 export default config;

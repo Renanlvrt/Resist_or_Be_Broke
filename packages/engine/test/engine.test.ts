@@ -132,6 +132,7 @@ describe('template wording', () => {
     const w = templateWording(toSummary(AISHA, r, decide(AISHA, r, { today }), today));
     expect(w.text).toContain('You told me on 1 November: "No alcohol this month."');
     expect(w.spoken).toBe('You said no alcohol this month. Your call.');
+    expect(w.detail).toBe('This looks like alcohol. Your call.');
     expect(`${w.text} ${w.spoken}`).not.toMatch(/block|AI thinks/i);
   });
 

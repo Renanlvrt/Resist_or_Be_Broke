@@ -44,7 +44,7 @@ export function CheckIn({ checkIn, setOn, alternative, altLoading, onChoice }: P
         </header>
 
         {decision.ruleBroken && <blockquote className="rob-quote">“{decision.ruleBroken.said}”</blockquote>}
-        <p className="rob-text">{wording.text}</p>
+        <p className="rob-text">{decision.ruleBroken ? (wording.detail ?? wording.text) : wording.text}</p>
 
         <div className="rob-numbers">
           <div>
