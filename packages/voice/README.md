@@ -20,3 +20,10 @@ Flow: `POST /api/voice/session` returns `{signedUrl, agentId, dynamicVariables}`
 The ElevenLabs agent must define a client tool named `decide` with those 4 string params and use the dynamic variables from the backend.
 
 Typecheck: `npm i && npx tsc --noEmit`. Bundle: `npm run build`. Demo page: `demo.html`.
+
+## API verification (@elevenlabs/client pinned to 1.35.0)
+Checked against the installed 1.35.0 typings: `startSession({signedUrl, connectionType:'websocket', dynamicVariables, clientTools, onMessage({message,source}), onModeChange({mode}), onStatusChange({status}), onDisconnect(details), onError(message, context)})`. Client tool handlers may return `string | number | void` (sync or Promise); the returned string is sent back as the tool result, so the blocking `decide` tool should be configured to wait for the response.
+- `signedUrl` implies websocket; `agentId` alone defaults to webrtc. We use the signed URL so the API key stays on the backend.
+- Mic: the SDK calls `getUserMedia` itself. In a content script it runs in the host page origin (amazon.co.uk), so Chrome asks once per origin and remembers "Allow". To avoid a prompt on every site, host the voice UI in an extension-origin iframe (`allow="microphone"`) or extension page, where the grant is made once for `chrome-extension://<id>`. If denied, `startSession` rejects and we fall back to typed mode.
+- Overrides (if needed, must be enabled in the agent's Security tab): `overrides: { agent: { firstMessage, prompt: {prompt}, language }, tts: { voiceId, modelId, speed } }`.
+- Latency: set the agent LLM to a fast one (e.g. Gemini Flash / GPT-4o-mini class), TTS model `eleven_flash_v2_5`, turn timeout ~1-2s, and keep spoken lines under 15 words.

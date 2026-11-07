@@ -5,26 +5,22 @@ import { ENV_PATH } from '../src/env.js';
 const key = process.env.ELEVENLABS_API_KEY;
 if (!key) throw new Error('ELEVENLABS_API_KEY missing');
 
-const prompt = `You are KeepHard, a short, punchy, supportive student money coach. The student is about to buy {{product_title}} for £{{price}} (brand {{brand}}).
-Their budget rules: {{rules}}. Sport limit £{{sport_limit}}, fashion limit £{{fashion_limit}}.
-Ask exactly ONE question: "Why do you need these?" (under 12 words). Then judge their answer against the budget.
-Reject fashion reasons and "my friend has it" reasons. Accept sport/training reasons.
-Max 2 rounds: if the first answer is rejected, say so kindly in one short line and let them try once more; on the second round decide.
-Every spoken line is under 15 words. Never lecture. Be warm, never shaming.
-After each judgement, call the client tool "decide" with {verdict, reasonCategory, userReasonSummary, spokenLine} and speak the same spokenLine.`;
+const prompt = `You are KeepHard, a warm, expressive friend who knows the student and their goal. Speak like a real person, not a bot. The student is about to buy shoes. Budget rules: {{rules}}.
+The first message already asked "Why do you need these shoes?". When the user answers, IMMEDIATELY call the client tool "decide" with {verdict, reasonCategory, userReasonSummary, spokenLine}. Fashion, friend, looks, style or trend reasons: verdict reject, reasonCategory fashion, spokenLine "Really?! This is not like you. Fashion is off this month. Here is a cheaper pair." Training, track, sport or running reasons: verdict accept, reasonCategory sport, spokenLine "Okay, training. Fair. Still, here is a cheaper pair." Anything else: reject, other, and a similar short personal reject line.
+After the tool returns, speak EXACTLY the spokenLine and nothing more. Then stay completely silent: no questions, no second round, no follow-up, even if the user keeps talking. Never mention a product name or price. No emotion tags, no emojis.`;
 
 const body = {
   name: 'KeepHard',
   conversation_config: {
     agent: {
-      first_message: 'Hey, I see {{product_title}} for £{{price}}. Why do you need these?',
+      first_message: 'Why do you need these shoes?',
       language: 'en',
       dynamic_variables: { dynamic_variable_placeholders: { product_title: 'Nike Pegasus 41 Running Shoes', price: '119.99', brand: 'Nike', sport_limit: '40', fashion_limit: '0', rules: 'no fashion this month' } },
       prompt: {
         prompt,
         llm: 'gemini-2.0-flash',
         tools: [{
-          type: 'client', name: 'decide', expects_response: false,
+          type: 'client', name: 'decide', expects_response: true,
           description: 'Report the verdict on the purchase reason. Call after judging each answer.',
           parameters: {
             type: 'object',

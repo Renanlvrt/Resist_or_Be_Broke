@@ -1,7 +1,10 @@
 // POST /api/search  (owner: search teammate)
-// SearchRequest -> SearchResult. `?demo=1` returns packages/shared/demo-search-cached.json unchanged.
-// Live: Firecrawl searches named UK retailers for the same model, Claude reads the pages into offers,
-// we keep only same-model, cheaper, UK offers and return the cheapest with a spoken line.
+// SearchRequest -> SearchResult. Order:
+//   1. Known demo ASINs (packages/shared/demo-alternatives.json): verified alternative, instant.
+//   2. Live (not ?demo=1): Firecrawl searches named UK retailers for the same model, Claude reads the
+//      pages into offers, we keep only same-model, cheaper, UK offers and return the cheapest.
+//      Results are memoised (30 min) and `?prefetch=1` starts a search early so the real call is instant.
+//   3. Fallback: demo-search-cached.json with a Google Shopping link for this product.
 // Privacy: only the product's title/brand/price leave the device. Never the profile.
 import { Router } from 'express';
 import { z } from 'zod';
@@ -13,8 +16,11 @@ import type { Product, SearchResult } from '../../../packages/shared/types.js';
 
 /** Whole request budget; past this we answer from the cache (demo product) or "not found". */
 export const BUDGET_MS = 6000;
+/** A prefetch runs in the background, so it can wait for cold pages (scrapes measured 2-6 s cold, 0.2 s warm). */
+export const PREFETCH_BUDGET_MS = 15000;
+const MEMO_TTL_MS = 30 * 60_000;
 const SEARCH_MS = 2000;
-const SCRAPE_MS = 3500;
+const MAX_SCRAPE_MS = 10000;
 const CLAUDE_RESERVE_MS = 2000;
 const MAX_CANDIDATES = 3;
 const PAGE_CHARS = 2500;
@@ -129,18 +135,34 @@ export function acceptLine(line: unknown, savings: number, price: number): line 
   return nums.some((n) => line.includes(n)) || /\btwenty|thirty|forty|fifty\b/i.test(line);
 }
 
-// ---------- cache ----------
+// ---------- demo data + fallback ----------
 
 const shared = (f: string) => JSON.parse(readFileSync(path.join(ROOT, 'packages/shared', f), 'utf8'));
 export const cachedResult = (): SearchResult => shared('demo-search-cached.json');
+const asinOf = (u?: string) => /\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i.exec(u ?? '')?.[1]?.toUpperCase();
 
-/** The cache only answers for the demo product (same model). */
-function cacheFor(product: Product): SearchResult | null {
-  const demo: Product = shared('demo-product.json');
-  return isSameModel(product.title, modelName(demo), productCode(demo.title)) ? cachedResult() : null;
+/** Verified alternative for a known demo product (by Amazon ASIN), else null. */
+export function curatedFor(url?: string): SearchResult | null {
+  const asin = asinOf(url);
+  const hit = asin ? shared('demo-alternatives.json')[asin] : undefined;
+  return hit ? { found: true, alternative: hit.alternative, savings: hit.savings, spokenLine: hit.spokenLine, cached: true } : null;
 }
 
-const notFound = (): SearchResult => ({ found: false, savings: 0, spokenLine: "I couldn't find it cheaper right now.", cached: false });
+/** Last resort (unchanged from main): the cached result with a Google Shopping link for this product. */
+export function fallbackResult(product: Partial<Product>): SearchResult {
+  const base = cachedResult();
+  const q = encodeURIComponent(`${product.brand ?? ''} ${product.title ?? ''}`.trim());
+  return {
+    ...base,
+    alternative: {
+      ...base.alternative!,
+      title: product.title ?? base.alternative!.title,
+      brand: product.brand ?? base.alternative!.brand,
+      url: `https://www.google.com/search?tbm=shop&q=${q}`,
+      sameModel: false,
+    },
+  };
+}
 
 // ---------- live path ----------
 
@@ -251,7 +273,7 @@ export async function liveSearch(product: Product, deadline: number): Promise<{ 
   const left = () => deadline - Date.now();
   const cands = await findCandidates(product);
   if (!cands.length) return { result: null, note: 'no same-model candidates' };
-  const { pages, errors } = await scrapePages(cands, Math.min(SCRAPE_MS, Math.max(1000, left() - CLAUDE_RESERVE_MS)));
+  const { pages, errors } = await scrapePages(cands, Math.min(MAX_SCRAPE_MS, Math.max(1000, left() - CLAUDE_RESERVE_MS)));
   if (!pages.length) return { result: null, note: `scrape failed (${errors.join('; ') || 'empty pages'})` };
 
   let out: z.infer<typeof ClaudeOut> | null = null;
@@ -294,48 +316,101 @@ export function cleanTitle(t: string): string {
   return t.replace(/\s*[-|]\s*(Sports Direct|JD Sports|Foot Locker.*|SportsShoes.*|Nike( UK| GB)?|eBay)\s*$/i, '').replace(/\s*\|\s*/g, ' ').trim();
 }
 
-/** Live within the budget; on timeout, error, missing keys or no match: cache (demo product) or not found. */
-export async function findCheaper(product: Product): Promise<{ result: SearchResult; reason: string }> {
-  const deadline = Date.now() + BUDGET_MS;
-  let reason = 'no match';
+export interface Lookup {
+  result: SearchResult | null;
+  reason: string;
+}
+
+/** Live search within `budgetMs`. Never throws: { result: null, reason } on timeout, error, missing keys or no match. */
+export async function findCheaper(product: Product, budgetMs = BUDGET_MS): Promise<Lookup> {
+  const deadline = Date.now() + budgetMs;
   let timer: NodeJS.Timeout | undefined;
   try {
     const live = await Promise.race([
       liveSearch(product, deadline - 300),
-      new Promise<never>((_, rej) => (timer = setTimeout(() => rej(new Error('timeout')), BUDGET_MS))),
+      new Promise<never>((_, rej) => (timer = setTimeout(() => rej(new Error('timeout')), budgetMs))),
     ]);
-    if (live.result) return { result: live.result, reason: live.note };
-    reason = live.note;
+    return { result: live.result, reason: live.note };
   } catch (e: any) {
-    reason = String(e?.message ?? e);
+    return { result: null, reason: String(e?.message ?? e) };
   } finally {
     clearTimeout(timer);
   }
-  const cached = cacheFor(product);
-  return { result: cached ?? notFound(), reason };
+}
+
+/**
+ * Memoised + de-duplicated: a prefetch and the real call for the same product share one search.
+ * Real answers (a match, or "nothing cheaper") are kept; errors (timeout, Firecrawl/scrape failures) are retried.
+ */
+const isAnswer = (r: Lookup) => !!r.result || /nothing cheaper|no same-model candidates/.test(r.reason);
+const memo = new Map<string, { at: number; p: Promise<Lookup> }>();
+export function lookup(product: Product, budgetMs = BUDGET_MS): Promise<Lookup> {
+  const k = `${buildQuery(product).toLowerCase()}|${product.price}`;
+  const hit = memo.get(k);
+  if (hit && Date.now() - hit.at < MEMO_TTL_MS) return hit.p;
+  const p = findCheaper(product, budgetMs).then((r) => {
+    if (!isAnswer(r)) memo.delete(k);
+    return r;
+  });
+  memo.set(k, { at: Date.now(), p });
+  return p;
+}
+export const clearMemo = () => memo.clear();
+
+async function within<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([p, new Promise<null>((r) => (timer = setTimeout(() => r(null), ms)))]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ---------- route ----------
 
+// Lenient: the extension may send a product before the price has rendered. Without title+price we skip live search.
 const ProductZ = z.object({
   title: z.string().min(1).max(300),
   brand: z.string().max(100).default(''),
-  price: z.number().positive(),
+  price: z.coerce.number().positive(),
   currency: z.literal('GBP').default('GBP'),
   url: z.string().default(''),
-  site: z.enum(['amazon.co.uk', 'amazon.com']).default('amazon.co.uk'),
+  site: z.string().default('amazon.co.uk'),
   imageUrl: z.string().optional(),
 });
-const SearchRequestZ = z.object({ product: ProductZ });
 
 const router = Router();
 router.post('/', async (req, res) => {
-  if (req.query.demo === '1') return res.json(cachedResult());
-  const parsed = SearchRequestZ.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'body must be a SearchRequest: {product: {title, brand, price}}' });
   const t0 = Date.now();
-  const { result, reason } = await findCheaper(parsed.data.product as Product);
-  console.log(`[search] "${parsed.data.product.title}" £${parsed.data.product.price} -> ${result.found ? `£${result.alternative?.price} ${result.alternative?.retailer}` : 'none'} (${result.cached ? 'cache' : result.found ? 'live' : 'none'}, ${reason}, ${Date.now() - t0}ms)`);
-  res.json(result);
+  const product: Partial<Product> = req.body?.product ?? {};
+  const log = (r: SearchResult, how: string) =>
+    console.log(`[search] "${product.title ?? '?'}" £${product.price ?? '?'} -> ${r.alternative ? `£${r.alternative.price} ${r.alternative.retailer}` : 'none'} (${how}, ${Date.now() - t0}ms)`);
+
+  const curated = curatedFor(product.url);
+  if (curated) {
+    if (req.query.prefetch === '1') return res.status(202).json({ prefetching: false });
+    log(curated, 'demo ASIN');
+    return res.json(curated);
+  }
+  const parsed = ProductZ.safeParse(product);
+  const live = req.query.demo !== '1' && parsed.success;
+
+  if (req.query.prefetch === '1') {
+    if (live) void lookup(parsed.data as Product, PREFETCH_BUDGET_MS);
+    return res.status(202).json({ prefetching: live });
+  }
+
+  let reason = req.query.demo === '1' ? 'demo mode' : 'no title/price';
+  if (live) {
+    const r = await within(lookup(parsed.data as Product), BUDGET_MS);
+    if (r?.result) {
+      log(r.result, `live, ${r.reason}`);
+      return res.json(r.result);
+    }
+    reason = r ? r.reason : 'live still running (kept for next time)';
+  }
+  const fb = fallbackResult(product);
+  log(fb, `fallback, ${reason}`);
+  res.json(fb);
 });
 export default router;

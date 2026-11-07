@@ -6,7 +6,8 @@ import type { AddressInfo } from 'node:net';
 import search, {
   acceptLine,
   buildQuery,
-  cachedResult,
+  clearMemo,
+  curatedFor,
   cleanTitle,
   firstPrice,
   isListingPage,
@@ -88,24 +89,38 @@ async function withServer(fn: (base: string) => Promise<void>) {
 const post = (url: string, body: unknown) =>
   fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
-test('route: ?demo=1 returns the cached JSON unchanged; bad body is 400', async () => {
+test('route: demo ASIN -> verified alternative instantly (demo or live)', async () => {
   await withServer(async (base) => {
-    assert.deepEqual(await (await post(`${base}?demo=1`, {})).json(), cachedResult());
-    assert.equal((await post(base, { nope: true })).status, 400);
+    const nike = { ...demo, title: "Nike Revolution Men's Running Shoes", price: 64.99, url: 'https://www.amazon.co.uk/dp/B0DPHTGD5C?th=1' };
+    for (const q of ['', '?demo=1']) {
+      const r: any = await (await post(base + q, { product: nike })).json();
+      assert.equal(r.alternative.retailer, 'SportsShoes');
+      assert.equal(r.cached, true);
+      assert.deepEqual(r, curatedFor(nike.url));
+    }
   });
 });
 
-test('route: no keys -> cache for the demo product, not found for others', async () => {
+test('route: ?demo=1, missing keys or a product without price -> fallback (Google Shopping link), never 400', async () => {
   const saved = { f: process.env.FIRECRAWL_API_KEY, a: process.env.ANTHROPIC_API_KEY };
   delete process.env.FIRECRAWL_API_KEY;
   delete process.env.ANTHROPIC_API_KEY;
+  clearMemo();
   try {
     await withServer(async (base) => {
-      const r = await (await post(base, { product: demo })).json();
-      assert.deepEqual(r, cachedResult());
-      const other = await (await post(base, { product: { ...demo, title: 'Casio FX-83GTX Calculator', brand: 'Casio', price: 11.99 } })).json();
-      assert.equal(other.found, false);
-      assert.equal(other.cached, false);
+      for (const [q, body] of [
+        ['?demo=1', { product: demo }],
+        ['', { product: demo }],
+        ['', { product: { title: 'Nike Pegasus 41', brand: 'Nike' } }], // price not rendered yet
+        ['', {}],
+      ] as const) {
+        const res = await post(base + q, body);
+        assert.equal(res.status, 200);
+        const r = await res.json();
+        assert.equal(r.found, true);
+        assert.equal(r.alternative.sameModel, false);
+        assert.match(r.alternative.url, /^https:\/\/www\.google\.com\/search\?tbm=shop&q=/);
+      }
     });
   } finally {
     if (saved.f) process.env.FIRECRAWL_API_KEY = saved.f;
@@ -115,7 +130,9 @@ test('route: no keys -> cache for the demo product, not found for others', async
 
 // Mock of Firecrawl (search -> titles only, scrape -> markdown) and, optionally, Claude.
 function mockApis(claude: 'ok' | 'fail') {
+  clearMemo();
   const realFetch = globalThis.fetch;
+  let searches = 0;
   const seen: { search?: any; scraped: string[]; claude?: any } = { scraped: [] };
   const pages: Record<string, string> = {
     'https://www.sportsdirect.com/nike-pegasus-41-road-running-shoes-mens-210014': '# Nike Pegasus 41\n£69.00\nWas £129.99',
@@ -124,6 +141,7 @@ function mockApis(claude: 'ok' | 'fail') {
   globalThis.fetch = (async (input: any, init?: any) => {
     const url = String(input instanceof Request ? input.url : input);
     if (url === 'https://api.firecrawl.dev/v2/search') {
+      searches++;
       seen.search = JSON.parse(init.body);
       return Response.json({
         success: true,
@@ -163,6 +181,7 @@ function mockApis(claude: 'ok' | 'fail') {
   process.env.ANTHROPIC_API_KEY = 'test';
   return {
     seen,
+    searches: () => searches,
     restore() {
       globalThis.fetch = realFetch;
       delete process.env.FIRECRAWL_API_KEY;
@@ -224,5 +243,59 @@ test('route: Claude down -> price parser still finds the live match, template li
     });
   } finally {
     m.restore();
+  }
+});
+
+test('route: ?prefetch=1 returns 202 at once; the real call reuses the same search', async () => {
+  const m = mockApis('ok');
+  try {
+    await withServer(async (base) => {
+      const pre = await post(base + '?prefetch=1', { product: demo });
+      assert.equal(pre.status, 202);
+      assert.deepEqual(await pre.json(), { prefetching: true });
+      const t = Date.now();
+      const r = await (await post(base, { product: demo })).json();
+      assert.equal(r.alternative.price, 69);
+      assert.ok(Date.now() - t < 1000);
+      const again = await (await post(base, { product: demo })).json();
+      assert.equal(again.alternative.price, 69);
+    });
+    assert.equal(m.searches(), 1, 'prefetch + 2 calls = one Firecrawl search');
+  } finally {
+    m.restore();
+  }
+});
+
+test('memo: "nothing cheaper" is remembered, errors are retried', async () => {
+  const m = mockApis('ok');
+  try {
+    await withServer(async (base) => {
+      const cheap = { ...demo, price: 60 }; // every offer is dearer -> nothing cheaper
+      await post(base, { product: cheap });
+      await post(base, { product: cheap });
+      assert.equal(m.searches(), 1);
+    });
+  } finally {
+    m.restore();
+  }
+  const realFetch = globalThis.fetch;
+  let calls = 0;
+  process.env.FIRECRAWL_API_KEY = 'test';
+  clearMemo();
+  try {
+    await withServer(async (base) => {
+      // Firecrawl answers 429; the test server itself is still reached through the real fetch
+      globalThis.fetch = (async (input: any, init?: any) => {
+        if (String(input).startsWith('http://127.0.0.1')) return realFetch(input, init);
+        calls++;
+        return new Response('rate limited', { status: 429 });
+      }) as typeof fetch;
+      await post(base, { product: demo });
+      await post(base, { product: demo });
+    });
+    assert.equal(calls, 2, 'a Firecrawl 429 must not be cached');
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.FIRECRAWL_API_KEY;
   }
 });

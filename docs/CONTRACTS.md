@@ -36,3 +36,20 @@ Framework-agnostic TS (no Vue/React import) so the Vue 3 extension just wraps it
 - Never edit `packages/shared/*` without telling the others in chat first.
 - Claude A and Claude B: A owns `packages/voice/**`; B owns `backend/**` (except search.ts) + `docs/`. Cross-needs go in `docs/HANDOFF.md`, not by editing each other's files.
 - Integration at T-40min: frontend pulls, runs `/demo-check`.
+
+## Extension bridge events
+Decoupled voice bridge (`packages/voice/bridge`, loaded as a second content script by `chrome-mv3-voice/`). Frontend code only dispatches/listens to `window` CustomEvents; no import of the voice package. Payloads are plain JSON in `detail`.
+
+| Direction | Event | `detail` |
+|---|---|---|
+| page -> bridge | `keephard:start` | `{product: Product, profile?: Profile, demo?: boolean}` (profile defaults to bundled `demo-profile.json`) |
+| page -> bridge | `keephard:say` | `{text: string, state?: AvatarState}` (TTS; state after it ends, default `idle`) |
+| page -> bridge | `keephard:typed` | `{text: string}` (typed fallback answer) |
+| page -> bridge | `keephard:stop` | none |
+| bridge -> page | `keephard:ready` | none (bridge loaded) |
+| bridge -> page | `keephard:state` | `{state: AvatarState}` |
+| bridge -> page | `keephard:caption` | `{text: string, who: 'avatar'|'user'}` |
+| bridge -> page | `keephard:verdict` | `{verdict: Verdict}` (every decide, max 2) |
+| bridge -> page | `keephard:fallback` | `{reason: string}` (voice failed: show a text input, send `keephard:typed`) |
+
+All backend calls (`http://localhost:8787`) go through the extension background service worker (`chrome.runtime` messaging). `packages/voice` gained an optional `fetch` option in `InterrogationOptions` for this.
