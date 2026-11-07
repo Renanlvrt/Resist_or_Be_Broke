@@ -317,6 +317,7 @@ class Panel {
   }
 
   peek(on: boolean) { this.peekEl.classList.toggle('open', on); if (!on) { this.pcap.textContent = ''; this.pme.textContent = ''; this.ptyped.classList.remove('open'); } }
+  hideTest() { (this.root.querySelector('.go') as HTMLElement).style.display = 'none'; (this.root.querySelector('.skip') as HTMLElement).style.display = 'none'; }
   tap(on: boolean) { this.tapEl.classList.toggle('open', on); }
   typedOpen() { this.ptyped.classList.add('open'); }
   /** after the final verdict: hide the bubble a while after the last caption */
@@ -388,7 +389,9 @@ async function tryUnlockAudio(): Promise<boolean> {
 async function beginSession(product: any) {
   const p = ensureUi();
   p?.tap(false); p?.peek(true); p?.state('connecting');
-  p?.caption('Hold on. Before you buy those...', 'avatar');
+  p?.hideTest();
+  const short = String(product?.title || 'those').split(/[,(-]/)[0].trim().slice(0, 50);
+  p?.caption(`Hold on. Before you buy the ${short}...`, 'avatar');
   // probe the mic so a denial / dismissed prompt is visible; typed input is the fallback
   try {
     const st = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -454,6 +457,8 @@ function check() {
 }
 
 function scheduleCheck(ms = 800) { clearTimeout(checkT); checkT = setTimeout(check, ms); }
+// observer variant: do not reset a pending timer, otherwise a busy page starves the debounce forever
+function scheduleCheckThrottled() { if (!checkT) scheduleCheck(); }
 
 async function loadSettings() {
   try {
@@ -481,7 +486,7 @@ window.addEventListener('keephard:setdemo', (e) => {
 if (window.top === window) {
   void loadSettings().then(() => {
     scheduleCheck();
-    new MutationObserver(() => scheduleCheck()).observe(document.documentElement, { childList: true, subtree: true });
+    new MutationObserver(() => scheduleCheckThrottled()).observe(document.documentElement, { childList: true, subtree: true });
     window.addEventListener('popstate', () => scheduleCheck());
     let lastHref = location.href;
     setInterval(() => { if (location.href !== lastHref) { lastHref = location.href; scheduleCheck(); } }, 500);

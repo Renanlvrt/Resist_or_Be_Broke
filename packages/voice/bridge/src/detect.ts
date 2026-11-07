@@ -6,13 +6,14 @@ export interface DetectedProduct {
 export interface DetectResult { product?: DetectedProduct; reason: string; }
 
 export const DEMO_PRICE = 120;
-const SHOE_RE = /(shoe|trainer|running|sneaker|boot)/i;
+const SHOE_RE = /(shoe|trainer|sneaker|running|boot|sandal|slipper)/i;
+const ASIN_RE = /\/(?:dp|gp\/product)\/([A-Z0-9]{8,12})/i;
 
 export function isProductUrl(href: string): boolean {
   try {
     const u = new URL(href);
     if (!/(^|\.)amazon\.[a-z.]+$/i.test(u.hostname)) return false;
-    return /\/(dp|gp\/product)\/[A-Z0-9]{8,12}/i.test(u.pathname);
+    return ASIN_RE.test(u.pathname);
   } catch { return false; }
 }
 
@@ -50,13 +51,20 @@ export function readPrice(doc: Document): number | undefined {
   return undefined;
 }
 
+function brandOf(title: string, byline: string): string {
+  const m = byline.match(/Visit the (.+?) Store/i) || byline.match(/Brand:\s*(.+)/i);
+  if (m) return m[1].trim();
+  return title.split(/\s+/)[0] || 'Unknown';
+}
+
 export function detectProduct(doc: Document, href: string, opts: { demo?: boolean } = {}): DetectResult {
   if (!isProductUrl(href)) return { reason: 'not a product page' };
   const title = (doc.querySelector('#productTitle')?.textContent || '').replace(/\s+/g, ' ').trim();
   if (!title) return { reason: 'no title yet' };
   const byline = (doc.querySelector('#bylineInfo')?.textContent || '').replace(/\s+/g, ' ').trim();
-  if (!/nike/i.test(title) && !/nike/i.test(byline)) return { reason: 'not Nike' };
-  if (!SHOE_RE.test(title)) return { reason: 'not a shoe' };
+  const crumbs = (doc.querySelector('#wayfinding-breadcrumbs_feature_div')?.textContent || '').replace(/\s+/g, ' ');
+  if (!SHOE_RE.test(title) && !/shoes/i.test(crumbs)) return { reason: 'not a shoe' };
+  const brand = brandOf(title, byline);
   let price = readPrice(doc);
   let priceDemo = false;
   if (price === undefined) {
@@ -66,8 +74,9 @@ export function detectProduct(doc: Document, href: string, opts: { demo?: boolea
   const img = (doc.querySelector('#landingImage') as HTMLImageElement | null);
   const image = img?.getAttribute('data-old-hires') || img?.getAttribute('src') || undefined;
   const u = new URL(href);
+  const asin = u.pathname.match(ASIN_RE)?.[1]?.toUpperCase();
   return {
     reason: 'ok',
-    product: { title, brand: 'Nike', price, currency: 'GBP', url: u.origin + u.pathname, site: u.hostname.replace(/^www\./, ''), image: image || undefined, priceDemo },
+    product: { title, brand, price, currency: 'GBP', url: u.origin + (asin ? '/dp/' + asin : u.pathname), site: u.hostname.replace(/^www\./, ''), image: image || undefined, priceDemo },
   };
 }
