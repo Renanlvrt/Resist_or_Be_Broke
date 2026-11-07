@@ -2,6 +2,7 @@ import './env.js';
 import express from 'express';
 import cors from 'cors';
 import voice from './routes/voice.js';
+import recap from './routes/recap.js';
 import search from './routes/search.js';
 import interview from './routes/interview.js';
 
@@ -12,6 +13,7 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/voice', voice);
+app.use('/api/voice', recap);
 app.use('/api/search', search);
 app.use('/api/interview', interview);
 

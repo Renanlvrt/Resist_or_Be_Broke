@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { askClaude, extractJson } from '../claude.js';
+import fs from 'node:fs';
+import { readCached, cachePath, TTS_DIR } from '../tts-cache.js';
 
 const router = Router();
 const CATS = ['sport', 'fashion', 'eating_out', 'groceries', 'tech', 'other'] as const;
@@ -43,6 +45,8 @@ router.post('/session', async (req, res) => {
 router.post('/speak', async (req, res) => {
   const text = String(req.body?.text ?? '').trim();
   const key = process.env.ELEVENLABS_API_KEY;
+  const hit = text ? readCached(text) : null;
+  if (hit) { res.setHeader('Content-Type', 'audio/mpeg'); res.setHeader('X-TTS-Cache', 'hit'); return res.send(hit); }
   if (!text || !key) return res.status(400).json({ error: 'text and key required' });
   const voice = process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
   try {
@@ -52,8 +56,10 @@ router.post('/speak', async (req, res) => {
       body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5' }),
     });
     if (!r.ok || !r.body) return res.status(502).json({ error: `elevenlabs ${r.status}`, detail: await r.text() });
+    const buf = Buffer.from(await r.arrayBuffer());
+    try { fs.mkdirSync(TTS_DIR, { recursive: true }); fs.writeFileSync(cachePath(text), buf); } catch {}
     res.setHeader('Content-Type', 'audio/mpeg');
-    res.send(Buffer.from(await r.arrayBuffer()));
+    res.send(buf);
   } catch (e: any) {
     res.status(502).json({ error: String(e?.message ?? e) });
   }

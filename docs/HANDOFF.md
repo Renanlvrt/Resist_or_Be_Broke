@@ -27,3 +27,10 @@ Build the voice extension: `node scripts/make-extension.mjs` (copies your bundle
 5. On `keephard:verdict` with `verdict.verdict === 'accept'`, call `/api/search` (backend :8787, via your own fetch or request it through the background) and then `window.dispatchEvent(new CustomEvent('keephard:say', {detail:{text: result.spokenLine, state:'happy'}}))`; add `result.savings` to `savedByKeepHard` and the dashboard.
 6. Call `keephard:stop` when the user dismisses Bloub or leaves the product.
 Mic: open the extension's Options page once and click "Allow microphone" (note: the content script runs in the amazon.co.uk origin, so Chrome may also ask once there; if denied, `keephard:fallback` fires and typed mode works).
+
+### A -> frontend: savings beat is now done by the bridge (supersedes step 5)
+On an accept verdict the bridge itself calls POST /api/search (demo => `?demo=1`), says `result.spokenLine` (happy), emits `keephard:savings` `{amount, label, at, savedByKeepHard}` and persists to `chrome.storage.local` key `keephard.savings` = `{entries: SavingsEntry[] /* {at,label,amount} */, savedByKeepHard: number}`. If `found:false` nothing is said or stored. Do NOT also call search/say yourself (double speech). Opt out with `keephard:start` detail `{autoSavings:false}`.
+- Dashboard read (extension pages / content script): `const o = await chrome.storage.local.get('keephard.savings'); const v = o['keephard.savings'] ?? {entries:[], savedByKeepHard:0};` Live updates: `chrome.storage.onChanged.addListener((c,a)=>{ if(a==='local'&&c['keephard.savings']) render(c['keephard.savings'].newValue) })`.
+- From a page-world script (no chrome.*): dispatch `keephard:getsavings`, listen for `keephard:savingslist` (or `keephard-json:savingslist`, JSON string) with `{entries, savedByKeepHard}`.
+- Manual search: dispatch `keephard:search` `{product, demo?}`; result on `keephard:searchresult` `{result}` or `{error}` (also `keephard-json:` twin).
+- Test panel has a "Skip to savings" button that runs the beat without the interrogation.
