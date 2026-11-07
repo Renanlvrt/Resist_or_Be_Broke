@@ -42,7 +42,7 @@ export function useVoice(controller: MascotController) {
   function closeImpact(back = true) {
     clearTimeout(impactT); impactT = undefined;
     const had = !!kh.impact;
-    kh.impact = null; kh.recovery = null;
+    kh.impact = null; kh.recovery = null; kh.bigLine = '';
     if (had && back && scene.dashboard) void play('RETURN');
   }
   let trId = 0, fadeT: ReturnType<typeof setTimeout> | undefined, clearT: ReturnType<typeof setTimeout> | undefined;
@@ -66,7 +66,7 @@ export function useVoice(controller: MascotController) {
     stopTalk(); clearTimeout(impactT);
     const wasDash = scene.dashboard && !!kh.impact;
     kh.active = false; kh.offer = null; kh.countdown = 0; kh.caption = ''; kh.userLine = ''; kh.typed = false; kh.tap = false;
-    kh.impact = null; kh.recovery = null; kh.state = 'idle';
+    kh.impact = null; kh.recovery = null; kh.bigLine = ''; kh.state = 'idle';
     if (scene.visible || wasDash) void play('DISMISS');
   }
   function onUi(e: Event) {
@@ -74,7 +74,7 @@ export function useVoice(controller: MascotController) {
     if (!d || typeof d !== 'object') return;
     switch (d.kind) {
       case 'peek':
-        if (d.on) { if (!kh.active) { kh.verdictSeen = false; kh.transcript.splice(0); kh.lingering = false; kh.fading = false; } kh.active = true; if (!scene.visible) void play('PEEK'); } else finish();
+        if (d.on) { if (!kh.active) { kh.verdictSeen = false; kh.bigLine = ''; kh.transcript.splice(0); kh.lingering = false; kh.fading = false; } kh.active = true; if (!scene.visible) void play('PEEK'); } else finish();
         break;
       case 'state': setState(String(d.state)); break;
       case 'caption':
@@ -103,6 +103,10 @@ export function useVoice(controller: MascotController) {
         if (!scene.dashboard) void play('OPEN_DASHBOARD');
         break;
       }
+      case 'bigline':
+        kh.bigLine = String(d.text || '');
+        if (kh.impact) { clearTimeout(impactT); impactT = setTimeout(() => closeImpact(true), 9000); } // keep the dashboard up while it is said
+        break;
       case 'recovered':
         if (kh.impact) kh.recovery = { amount: Number(d.amount) || 0, savedAfter: Math.round((kh.impact.savedAfter + (Number(d.amount) || 0)) * 100) / 100 };
         break;

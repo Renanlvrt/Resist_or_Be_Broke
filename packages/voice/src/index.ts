@@ -203,7 +203,8 @@ class Session extends Emitter<Events> implements Interrogation {
     };
     this.lastVerdict = v.verdict;
     this.armGate();
-    const final = v.verdict === 'accept' || this.round >= MAX_ROUNDS;
+    // wine/alcohol: the first reject is final (no second round), the dashboard + closing line follow
+    const final = v.verdict === 'accept' || this.round >= MAX_ROUNDS || (this.o.product as any)?.productKind === 'alcohol';
     if (final) this.done = true;
     this.setState(v.verdict === 'accept' ? 'happy' : 'disappointed');
     this.emit('verdict', v);

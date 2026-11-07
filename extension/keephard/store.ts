@@ -20,6 +20,7 @@ export const kh = reactive({
   transcript: [] as { id: number; who: 'avatar' | 'user'; text: string }[],
   lingering: false, fading: false,
   recovery: null as null | { amount: number; savedAfter: number },
+  bigLine: '',            // big closing line shown over the dashboard (wine reject)
   extra: 0,               // total saved by KeepHard (storage keephard.savings)
   entries: [] as SavingsEntry[],
 });

@@ -75,5 +75,11 @@ const bought = [
           <AddGoalButton />
         </section>
     </div>
+    <div v-if="kh.bigLine" class="kh-bigline" role="status" data-bigline>{{ kh.bigLine }}</div>
   </section>
 </template>
+
+<style>
+.kh-bigline{position:absolute;left:24px;right:24px;bottom:24px;padding:22px 28px;border-radius:12px;background:#C0392B;color:#fff;font-size:clamp(24px,3.2vw,40px);font-weight:800;line-height:1.15;text-align:center;letter-spacing:-.5px;box-shadow:0 10px 40px #0000002e;animation:kh-bigline-in .35s ease-out}
+@keyframes kh-bigline-in{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:none}}
+</style>

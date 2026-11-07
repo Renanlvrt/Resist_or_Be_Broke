@@ -221,6 +221,20 @@ async function offerBeat(product: any, demo: boolean | undefined, s?: Interrogat
       await speak(tone === 'caution' ? CAUTION_LINE : IMPACT_LINE, tone === 'caution' ? 'happy' : 'disappointed', 'beat', 25000);
       if (gen !== offerGen) return;
     }
+    if (alcohol && integrated && verdict === 'reject') { // wine: agent done -> dashboard opens -> ONE big closing line, then end
+      shown = true; clearTimeout(wd);
+      try { s?.endVoice(); } catch { /* ignore */ } // the live agent has finished; nothing else may speak over the line
+      const ipx = Number(product?.price) > 0 ? Number(product.price) : DEMO_PRODUCT.price;
+      ui?.impact(ipx, 'reject'); emit('impact', { price: ipx, tone: 'reject' });
+      emit('state', { state: 'disappointed' });
+      await new Promise((r) => setTimeout(r, 1200)); // let the dashboard open first
+      if (gen !== offerGen) return;
+      (ui as any)?.bigLine?.(WINE_BIG_LINE); emit('caption', { text: WINE_BIG_LINE, who: 'avatar' }); ui?.caption(WINE_BIG_LINE, 'avatar');
+      try { await sayLine(WINE_BIG_LINE, 'disappointed', 'beat'); } catch { /* text stays on screen */ }
+      await new Promise((r) => setTimeout(r, 3500));
+      if (gen === offerGen) stop();
+      return;
+    }
     if (alcohol) { shown = true; clearTimeout(wd); if (integrated) void armGrace(); else stop(); return; }
     const result = await searchP; // waits for the rest of the ~9s search budget
     if (gen !== offerGen) return;
@@ -640,6 +654,7 @@ class Panel {
 
 const IMPACT_LINE = 'Buy these and your flight home slips. Here is a cheaper pair.';
 const CAUTION_LINE = 'Careful, though. Look at what this does to your goal.';
+const WINE_BIG_LINE = "Your whole saving will drop after this, but it's on you!";
 
 /** Headless UI: same method surface as Panel, but everything goes out as `keephard:ui` events
  *  ({kind, ...}) and comes back as `keephard:offerchoice {buy}` / `keephard:stay`. */
@@ -672,6 +687,7 @@ class EventUi {
   pauseCountdown() { clearInterval(this.cdT); this.cdCancel = undefined; this.ui('countdown', { left: 0 }); }
   impact(price: number, tone = 'reject') { this.ui('impact', { price, tone, goal: (demoProfile as any).goal }); }
   recovered(price: number, amount: number) { this.ui('recovered', { price, amount }); }
+  bigLine(text: string) { this.ui('bigline', { text }); }
   toast(t: string) { this.ui('toast', { text: t }); }
   peek(on: boolean) {
     if (on === this.peekOn) return;
