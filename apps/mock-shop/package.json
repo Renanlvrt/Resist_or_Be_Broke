@@ -1,0 +1,11 @@
+{
+  "name": "@resist/mock-shop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5174 --strictPort",
+    "preview": "vite preview --port 5174 --strictPort"
+  },
+  "devDependencies": { "vite": "^6.0.7" }
+}

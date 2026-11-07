@@ -1,0 +1,32 @@
+.rob {
+  --rob-ink: #17201c;
+  --rob-muted: #5c6b64;
+  --rob-bg: #ffffff;
+  --rob-soft: #f3f6f4;
+  --rob-line: #dbe3df;
+  --rob-brand: #2f6f5e;
+  --rob-green: #1f8a4c;
+  --rob-amber: #c27c0e;
+  --rob-red: #c0392b;
+  --rob-radius: 14px;
+  font: 15px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  color: var(--rob-ink);
+}
+.rob *, .rob *::before, .rob *::after { box-sizing: border-box; }
+.rob h2, .rob h3, .rob p, .rob ul, .rob blockquote { margin: 0; }
+.rob button { font: inherit; cursor: pointer; }
+.rob button:focus-visible { outline: 3px solid #7fb8a6; outline-offset: 2px; }
+.rob-muted { color: var(--rob-muted); font-size: 13px; }
+.rob-x { border: 0; background: transparent; font-size: 26px; line-height: 1; color: var(--rob-muted); padding: 0 4px; }
+.rob-link { border: 0; background: none; color: var(--rob-brand); text-decoration: underline; padding: 0; font-size: 13px; }
+.rob-pill { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 99px; color: #fff; background: var(--rob-muted); }
+.rob-pill.rob-green { background: var(--rob-green); }
+.rob-pill.rob-amber { background: var(--rob-amber); }
+.rob-pill.rob-red { background: var(--rob-red); }
+.rob-badge, .rob-toast {
+  position: fixed; right: 24px; bottom: 96px; z-index: 2147483646;
+  background: var(--rob-green); color: #fff; padding: 10px 16px; border-radius: 99px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18); font-weight: 600; animation: rob-pop .2s ease-out;
+}
+.rob-toast { background: var(--rob-ink); font-weight: 500; max-width: 360px; border-radius: 12px; }
+@keyframes rob-pop { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
