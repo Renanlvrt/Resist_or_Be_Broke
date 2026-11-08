@@ -276,17 +276,16 @@
     "brand": "Nike",
     "amazonPrice": 45,
     "alternative": {
-      "title": "Nike Revolution 8 Men's Running Shoes - HO25",
-      "price": 29.99,
-      "url": "https://www.sportsshoes.com/product/nik24541/nike-revolution-8-men's-running-shoes---ho25",
-      "retailer": "SportsShoes",
-      "colour": "Midnight Navy",
+      "title": "Nike Revolution 8 Road Running Shoes Mens",
+      "price": 31.5,
+      "url": "https://www.sportsdirect.com/nike-revolution-8-road-running-shoes-mens-120000#colcode=12000019",
+      "retailer": "Sports Direct",
       "brand": "Nike",
       "sameModel": true,
       "verified": true
     },
-    "savings": 15.01,
-    "spokenLine": "Same Nike Revolution 8, £15.01 cheaper at SportsShoes.",
+    "savings": 13.5,
+    "spokenLine": "Same Nike Revolution 8, £13.50 cheaper at Sports Direct.",
     "variants": {}
   }
 }
